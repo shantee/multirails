@@ -43,33 +43,6 @@ export const AMBIENCES: Ambience[] = [
   },
 ];
 
-export const ZONE_LENGTH = 1500;
-const BLEND = 320;
-
-export function ambienceIndex(distance: number): number {
-  return Math.floor(Math.max(0, distance) / ZONE_LENGTH);
-}
-
-/** ambiance interpolée à une distance donnée */
-export function ambienceAt(distance: number, out: Ambience): Ambience {
-  const i = ambienceIndex(distance);
-  const a = AMBIENCES[i % AMBIENCES.length];
-  const b = AMBIENCES[(i + 1) % AMBIENCES.length];
-  const into = distance - i * ZONE_LENGTH;
-  let t = THREE.MathUtils.clamp((into - (ZONE_LENGTH - BLEND)) / BLEND, 0, 1);
-  t = t * t * (3 - 2 * t);
-  out.name = a.name;
-  out.emoji = a.emoji;
-  for (const k of ['top', 'horizon', 'sun', 'cloudLit', 'cloudShade', 'hemiSky', 'hemiGround'] as const) {
-    out[k].copy(a[k]).lerp(b[k], t);
-  }
-  out.elev = a.elev + (b.elev - a.elev) * t;
-  out.azim = a.azim + (b.azim - a.azim) * t;
-  out.sunPower = a.sunPower + (b.sunPower - a.sunPower) * t;
-  out.night = a.night + (b.night - a.night) * t;
-  return out;
-}
-
 export function cloneAmbience(a: Ambience): Ambience {
   return {
     ...a, top: a.top.clone(), horizon: a.horizon.clone(), sun: a.sun.clone(), cloudLit: a.cloudLit.clone(),
@@ -234,14 +207,15 @@ function makeCloudPuffs(count: number): THREE.Mesh<THREE.InstancedBufferGeometry
       uSun: { value: new THREE.Color() },
       uSunDir: { value: new THREE.Vector3() },
       uTime: { value: 0 },
+      uBase: { value: 0 },
     },
     vertexShader: /* glsl */ `
       attribute vec4 aOff;
-      uniform vec3 uCam; uniform float uTime;
+      uniform vec3 uCam; uniform float uTime, uBase;
       varying vec2 vUv; varying float vSeed; varying float vDist; varying vec3 vView;
       void main(){
         float box = 2400.;
-        vec3 c = vec3(aOff.x + uTime * 1.5, aOff.y, aOff.z);
+        vec3 c = vec3(aOff.x + uTime * 1.5, aOff.y + uBase, aOff.z);
         c.xz = uCam.xz + mod(c.xz - uCam.xz + box * .5, box) - box * .5;
         float size = aOff.w;
         // posé sur sa base : le bas du nuage affleure
@@ -295,7 +269,8 @@ export class Sky {
   readonly fog = new THREE.Fog(0xffffff, 160, 1500);
   readonly amb: Ambience = cloneAmbience(AMBIENCES[0]);
   readonly sunDir = new THREE.Vector3();
-  private seaY = -62;
+  /** hauteur de la mer de nuages (elle s'éloigne à mesure que la voie monte) */
+  seaY = -62;
 
   constructor(scene: THREE.Scene, puffCount: number) {
     this.puffs = makeCloudPuffs(puffCount);
@@ -308,8 +283,17 @@ export class Sky {
     this.puffs.geometry.instanceCount = Math.min(n, (this.puffs.geometry.getAttribute('aOff') as THREE.InstancedBufferAttribute).count);
   }
 
-  update(distance: number, cam: THREE.Vector3, heading: number, time: number): void {
-    const a = ambienceAt(distance, this.amb);
+  update(target: Ambience, altitude: number, cam: THREE.Vector3, heading: number, time: number): void {
+    const a = this.amb;
+    for (const k of ['top', 'horizon', 'sun', 'cloudLit', 'cloudShade', 'hemiSky', 'hemiGround'] as const) a[k].copy(target[k]);
+    a.name = target.name;
+    a.emoji = target.emoji;
+    a.elev = target.elev;
+    a.azim = target.azim;
+    a.sunPower = target.sunPower;
+    a.night = target.night;
+    // plus on monte, plus la mer de nuages paraît loin dessous
+    this.seaY = -62 + altitude * 0.55;
     // le soleil reste à peu près devant le train, légèrement de côté
     const az = heading + a.azim;
     this.sunDir.set(Math.sin(az) * Math.cos(a.elev), Math.sin(a.elev), -Math.cos(az) * Math.cos(a.elev)).normalize();
@@ -341,6 +325,7 @@ export class Sky {
     p.uSun.value.copy(a.sun);
     p.uSunDir.value.copy(this.sunDir);
     p.uTime.value = time;
+    p.uBase.value = this.seaY + 62;
 
     this.fog.color.copy(a.horizon);
     this.sunLight.color.copy(a.sun);

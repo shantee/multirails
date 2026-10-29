@@ -9,6 +9,8 @@ export interface Prefs {
   music: boolean;
   quality: 'auto' | 'haute' | 'moyenne' | 'basse';
   pad: boolean;
+  /** vivante : plans variés et panoramas ; calme : caméra posée derrière le train */
+  camera: 'vivante' | 'calme';
 }
 
 export interface EndStats {
@@ -21,7 +23,8 @@ export interface EndStats {
   avg: number;
   bestCombo: number;
   saved: number;
-  zones: number;
+  /** régions traversées, dans l'ordre */
+  regions: Array<{ emoji: string; name: string }>;
   bridges: number;
   missed: Fact[];
   mode: Mode;
@@ -360,7 +363,13 @@ export class UI {
       this.on.prefs(p);
       this.renderTitle(record);
     };
-    settings.append(q, mu, so);
+    const cam = h('button', 'pill', `Caméra : <b>${p.camera === 'calme' ? 'calme' : 'vivante'}</b>`);
+    cam.onclick = () => {
+      p.camera = p.camera === 'calme' ? 'vivante' : 'calme';
+      this.on.prefs(p);
+      this.renderTitle(record);
+    };
+    settings.append(q, cam, mu, so);
   }
 
   showTitle(show: boolean): void {
@@ -402,6 +411,7 @@ export class UI {
           <div><b>${s.bestCombo}</b><small>meilleure série</small></div>
           <div><b>${s.saved}</b><small>voyageurs sauvés</small></div>
         </div>
+        ${s.regions.length ? `<div class="journey">${s.regions.map((r) => `<span title="${r.name}">${r.emoji}<small>${r.name}</small></span>`).join('<i>›</i>')}</div>` : ''}
         ${missed ? `<div class="label">À revoir</div><div class="missed">${missed}</div>` : '<div class="perfect">Aucune erreur, bravo !</div>'}
         ${s.mode === 'aventure' && !s.record && s.best > 0 ? `<div class="best">Record : ${s.best.toLocaleString('fr-FR')}</div>` : ''}
         <button class="go replay">Rejouer</button>

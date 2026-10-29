@@ -30,6 +30,8 @@ export class Audio {
   danger = 0;
   boiling = false;
   playing = false;
+  /** moment de contemplation : la musique respire */
+  calm = false;
   private lastBuild = 0;
 
   unlock(): void {
@@ -166,7 +168,7 @@ export class Audio {
     const s16 = step % 16;
     const chord = CHORDS[bar];
     const m = this.music;
-    const lvl = this.boiling ? 3 : this.intensity;
+    const lvl = this.boiling ? 3 : this.calm ? 0 : this.intensity;
     if (s16 === 0) {
       // nappe douce
       for (const n of chord) this.tone(midi(ROOT + 12 + n), t, st * 15, 0.035, 'triangle', m, 0.4);
@@ -175,8 +177,8 @@ export class Audio {
     if (s16 === 0 || s16 === 8 || (lvl >= 1 && (s16 === 6 || s16 === 14))) {
       this.tone(midi(ROOT - 12 + chord[0]), t, st * 3, s16 % 8 === 0 ? 0.16 : 0.09, 'triangle', m, 0.01);
     }
-    // kalimba : arpège pentatonique
-    const density = lvl >= 2 ? 1 : lvl >= 1 ? 2 : 4;
+    // kalimba : arpège pentatonique (très aéré pendant les contemplations)
+    const density = this.calm ? 8 : lvl >= 2 ? 1 : lvl >= 1 ? 2 : 4;
     if (s16 % density === 0) {
       const h = (step * 7 + bar * 3) % 11;
       if (lvl > 0 || h % 3 !== 1) {
@@ -413,6 +415,97 @@ export class Audio {
     o.start(t);
     o.stop(t + 1.8);
     this.burst(t + 1.7, 0.5, 0.2, 300, 1, 'lowpass');
+  }
+
+  /** grincements au bord du vide, puis « glups » */
+  teeter(): void {
+    if (!this.ok()) return;
+    const t = this.now;
+    for (let i = 0; i < 3; i++) {
+      const o = this.tone(180 + i * 25, t + i * 0.42, 0.3, 0.05, 'sawtooth', this.sfx, 0.08);
+      o.frequency.linearRampToValueAtTime(140 + i * 20, t + i * 0.42 + 0.35);
+    }
+    const ctx = this.ctx!;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(420, t + 1.35);
+    o.frequency.exponentialRampToValueAtTime(160, t + 1.5);
+    const g = ctx.createGain();
+    this.env(g, t + 1.35, 0.01, 0.18, 0.15);
+    o.connect(g).connect(this.sfx);
+    o.start(t + 1.35);
+    o.stop(t + 1.6);
+  }
+
+  /** soupape de soulagement : un long « pschhhh » et un petit sifflet heureux */
+  relief(): void {
+    if (!this.ok()) return;
+    const t = this.now;
+    this.burst(t, 1.3, 0.16, 5000, 0.6, 'highpass');
+    this.burst(t, 0.9, 0.08, 1800, 1, 'bandpass');
+    this.whistle(t + 1.1, 0.18, 1.1, 0.08);
+    this.whistle(t + 1.32, 0.35, 1.35, 0.08);
+  }
+
+  /** atterrissage moelleux dans la mer de nuages */
+  splash(): void {
+    if (!this.ok()) return;
+    const t = this.now;
+    this.burst(t, 0.7, 0.22, 500, 0.8, 'lowpass');
+    this.tone(70, t, 0.4, 0.18, 'sine');
+    [0, 4, 7].forEach((n, i) => this.pluck(ROOT + 24 + n, t + 0.5 + i * 0.12, 0.06, this.sfx, 0.8));
+  }
+
+  /** « couic » du canard en caoutchouc */
+  squeak(): void {
+    if (!this.ok()) return;
+    const ctx = this.ctx!;
+    const t = this.now;
+    for (let i = 0; i < 2; i++) {
+      const tt = t + i * 0.22;
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(1100, tt);
+      o.frequency.exponentialRampToValueAtTime(1700, tt + 0.08);
+      o.frequency.exponentialRampToValueAtTime(1200, tt + 0.16);
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.value = 1500;
+      f.Q.value = 3;
+      const g = ctx.createGain();
+      this.env(g, tt, 0.01, 0.07, 0.15);
+      o.connect(f).connect(g).connect(this.sfx);
+      o.start(tt);
+      o.stop(tt + 0.2);
+    }
+  }
+
+  /** les pièces jaillissent du vide : souffle montant */
+  rise(): void {
+    if (!this.ok()) return;
+    const ctx = this.ctx!;
+    const t = this.now;
+    const s = ctx.createBufferSource();
+    s.buffer = this.noise;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 2;
+    f.frequency.setValueAtTime(300, t);
+    f.frequency.exponentialRampToValueAtTime(2600, t + 0.45);
+    const g = ctx.createGain();
+    this.env(g, t, 0.15, 0.1, 0.35);
+    s.connect(f).connect(g).connect(this.sfx);
+    s.start(t, Math.random());
+    s.stop(t + 0.6);
+  }
+
+  /** la dernière pièce s'emboîte : « clac » et scintillement */
+  lock(): void {
+    if (!this.ok()) return;
+    const t = this.now;
+    this.burst(t, 0.05, 0.2, 2200, 3);
+    this.tone(150, t, 0.08, 0.12, 'triangle');
+    [24, 31, 36].forEach((n, i) => this.tone(midi(ROOT + n), t + 0.04 + i * 0.05, 0.4, 0.03, 'sine'));
   }
 
   click(): void {

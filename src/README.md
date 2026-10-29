@@ -21,7 +21,9 @@ npm run preview    # sert dist/ en local
 `dist/` est un site statique (chemins relatifs) : il pourra être copié tel quel dans Calcoolos plus tard.
 
 Paramètres d'adresse pour les essais : `?graine=42` (monde reproductible), `?depart=1.6` (partir à 1,6 km),
-`?auto=1.2` (répond juste après 1,2 s), `?auto=faux` (répond faux). `window.__multirail` expose l'état aux tests.
+`?auto=1.2` (répond juste après 1,2 s), `?auto=faux` (répond faux), `?vite=2` (temps du jeu accéléré).
+`window.__multirail` expose l'état aux tests (en développement, ou avec `?test` en production) : `state`, `s`, `shot`,
+`region`, `fall`, `cam`, `info()`, `regions()`, `segs()`, `start()`, `lose()` (plus aucun wagon), `camera('calme')`.
 
 ## La boucle de jeu
 
@@ -44,8 +46,21 @@ Paramètres d'adresse pour les essais : `?graine=42` (monde reproductible), `?de
   10 s : la bouilloire déborde de vapeur arc-en-ciel, ponts arc-en-ciel, points ×2, la baleine-nuage vient saluer.
 - **Grand Pont** environ tous les kilomètres : trois calculs d'affilée pour un pont de pierre et de cristal
   au-dessus d'un gouffre ; plan de caméra de côté pendant la traversée ; +300.
-- Le voyage traverse cinq ambiances (1,5 km chacune) : l'Aube rose, le Grand Ciel, l'Heure dorée,
-  le Couchant framboise, la Nuit des aurores (étoiles, aurores boréales, fenêtres et lanternes allumées).
+- **Le voyage** traverse des régions d'environ 1 km, chacune avec son ciel, sa lumière, ses îles, ses habitants, ses
+  poussières dans l'air et son monument : les Prés-Volants 🌼 (moulins, champs, moutons), la Forêt des Spores 🍄
+  (champignons géants lumineux), les Hameaux Perchés 🏡 (maisons à colombages, linge, montgolfières), puis dans un ordre
+  qui change à chaque partie les Cimes de Givre 💎, la Cité des Engrenages ⚙️ et le Récif des Nuées 🐢, et enfin les
+  Confins Étoilés ✨. Ensuite le voyage continue en boucle, dans un nouvel ordre.
+- Les régions se mélangent aux frontières : les premiers champignons poussent dans les prés bien avant la forêt.
+  La voie **monte** à chaque région (la mer de nuages s'éloigne dessous). Chaque frontière est une longue île
+  **de contemplation** : pas de calcul, le train flâne, la musique respire, la caméra fait un grand panorama.
+- **La caméra** suit le train en respirant (petits glissements, plans bas, hauts ou rapprochés de temps en temps) et
+  change de plan aux moments forts : profil au bord du vide quand une brèche approche, plan sur un pont qui se construit,
+  regard vers le monument de la région, Grand Pont de côté. Option « Caméra : calme » sur l'accueil (choisie d'office
+  si le système demande moins d'animations).
+- **La chute** : au bord du vide, Bouillotte vacille, bascule au ralenti, tombe… et son parachute s'ouvre : un torchon à
+  carreaux. Soupape de soulagement, voyageurs perdus qui reviennent l'accompagner sous leurs parapluies, canard de la
+  baignoire qui se pose sur le torchon, « plouf » dans la mer de nuages. On peut passer la scène en touchant l'écran.
 
 Vitesses : Promenade (≈12 → 8 s par calcul), Express (9 → 6 s), Bolide (7 → 4,6 s) ; la difficulté monte sur 4,5 km
 et ne descend jamais sous 4,6 s. Les calculs difficiles (6×7, 7×8…) n'arrivent qu'après quelques réussites ;
@@ -67,7 +82,7 @@ TypeScript strict, Vite, **Three.js** (WebGL 2), Web Audio. Une seule bibliothè
 | `game/model.ts` | règles pures et testées : choix des calculs, maîtrise, barème, combos, wagons |
 | `game/track.ts` | tracé infini (courbure = somme de sinusoïdes), plan îles / brèches calé sur le temps de réponse |
 | `game/rails.ts` | voie et ponts : chaque pièce vole à sa place **dans le vertex shader** (aucun calcul CPU), plan holographique |
-| `game/islands.ts` | îles flottantes procédurales : dessus fleuri, dessous en strates, cristaux, racines, cascades (shader) |
+| `game/islands.ts` | îles flottantes procédurales : forme, couleurs de la région, emplacements des décors et des scènes, cascades |
 | `game/sky.ts` | ciel (dégradé, soleil, cirrus, étoiles, aurores), mer de nuages éclairée, cumulus instanciés sur le GPU, ambiances |
 | `game/train.ts` | Bouillotte (yeux-lanternes sur tiges, paupières, couvercle qui saute, bielles, moustache) et les wagons-objets |
 | `game/creatures.ts` | la baleine-nuage |
@@ -75,7 +90,12 @@ TypeScript strict, Vite, **Three.js** (WebGL 2), Web Audio. Une seule bibliothè
 | `game/post.ts` | post-traitement en une passe : rayons de soleil, flou de vitesse, vignette, étalonnage |
 | `game/audio.ts` | tchou-tchou calé sur la vitesse, musique en couches (kalimba, basse, nappe), sifflet de bouilloire |
 | `game/ui.ts`, `style.css` | accueil, plaque, pavé, HUD, pause, fin de voyage |
-| `game/main.ts` | boucle, conduite du train, caméra, mise en scène |
+| `game/regions.ts` | les régions du voyage (ordre, palettes, ambiances, poussières), mélange aux frontières, altitude |
+| `game/decor.ts` | les « kits » de décor de chaque région, le dessous des îles, les monuments ; animations sur la carte graphique |
+| `game/life.ts` | petites scènes vivantes, habitants qui saluent, volées (oiseaux, poissons volants, lanternes…), poussières |
+| `game/director.ts` | la réalisatrice : plans de caméra et fondus entre eux |
+| `game/fall.ts` | la chute en parachute (trajectoire au-dessus du vide, torchon, canard, amerrissage) |
+| `game/main.ts` | boucle, conduite du train, choix des plans, mise en scène |
 
 Qualité graphique : auto (haute sur ordinateur, moyenne sur tactile, baisse d'un cran si l'image passe sous 42 i/s),
 ou haute / moyenne / basse (résolution, post-traitement, rayons, nuages, densité des décors).
@@ -86,6 +106,7 @@ Données locales (`localStorage`) : `multirail-prefs`, `multirail-records`, `mul
 
 - WebGL 2 seulement (pas de WebGPU) : les shaders sont écrits à la main en GLSL ; un passage à WebGPU imposerait de
   les réécrire en TSL/WGSL pour un gain faible sur ce type de scène.
-- Mesuré à 60 i/s sur le poste Fedora (Chrome, 1280 × 800, ~190 appels de dessin, ~160 000 triangles) ;
-  pas encore essayé sur une vraie tablette.
+- Mesuré à 60 i/s sur le poste Fedora avant le chantier 2 (~190 appels de dessin, ~160 000 triangles). Après le
+  chantier 2 : 130 à 290 appels de dessin et 115 000 à 240 000 triangles selon la région (qualité haute, mesuré dans un
+  Chrome sans carte graphique, donc sans mesure d'images par seconde fiable). Pas encore essayé sur une vraie tablette.
 - Le son a été vérifié par ses appels, pas à l'oreille. La musique est générative et courte en motifs.

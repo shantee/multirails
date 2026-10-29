@@ -1,6 +1,7 @@
 // Tracé procédural de la voie et découpage en îles (rails déjà posés) et brèches (rails à construire).
 import * as THREE from 'three';
 import { cycleLength, mulberry32, type Difficulty, type Rng } from './model';
+import { Regions } from './regions';
 
 export interface Frame {
   pos: THREE.Vector3;
@@ -24,7 +25,10 @@ export class TrackPath {
   private waves: Array<[number, number, number]>;
   private hills: Array<[number, number, number]>;
 
-  constructor(seed: number) {
+  constructor(
+    seed: number,
+    private regions = new Regions(seed),
+  ) {
     const r = mulberry32(seed);
     // courbure = somme de sinusoïdes lentes : virages amples, jamais brusques
     this.waves = [
@@ -49,7 +53,8 @@ export class TrackPath {
   private height(s: number): number {
     let y = 0;
     for (const [a, f, p] of this.hills) y += a * Math.sin(s * f + p);
-    return y * Math.min(1, s / 200);
+    // relief doux + montée de région en région : le voyage gagne de la hauteur
+    return y * Math.min(1, s / 200) + this.regions.altitude(s);
   }
 
   get end(): number {
@@ -141,8 +146,12 @@ export interface Segment {
   spans: number;
   /** un voyageur attend sur une halte à côté de cette brèche */
   passenger: boolean;
-  /** îles : type de décor */
+  /** îles : variante de palette */
   biome: number;
+  /** rang de la région traversée */
+  region: number;
+  /** île de contemplation (frontière de région) : pas de calcul, la caméra admire le paysage */
+  calm: boolean;
 }
 
 /** plan de la voie : alternance d'îles et de brèches, calibrée sur le temps de réponse */
@@ -159,6 +168,7 @@ export class Layout {
   constructor(
     seed: number,
     private difficulty: Difficulty,
+    readonly regions = new Regions(seed),
   ) {
     this.rng = mulberry32(seed ^ 0x5bd1e995);
     // île de départ, longue : le temps de découvrir le train
@@ -168,7 +178,7 @@ export class Layout {
   private push(kind: SegmentKind, len: number, biome: number, extra: Partial<Segment> = {}): Segment {
     const seg: Segment = {
       id: this.nextId++, kind, s0: this.cursor, s1: this.cursor + len, built: kind === 'island', rescue: false,
-      style: 'plain', span: 0, spans: 1, passenger: false, biome, ...extra,
+      style: 'plain', span: 0, spans: 1, passenger: false, biome, region: this.regions.rankAt(this.cursor), calm: false, ...extra,
     };
     this.cursor += len;
     this.segments.push(seg);
@@ -179,9 +189,16 @@ export class Layout {
     while (this.cursor < to) {
       const cyc = cycleLength(this.difficulty, this.cursor);
       const biome = Math.floor(this.rng() * 4);
+      // à chaque frontière de région : une longue île sans calcul pour admirer le nouveau paysage
+      const border = this.regions.nextStart(this.cursor);
+      if (this.cursor > 300 && border - this.cursor < cyc * 1.15) {
+        this.push('island', border - this.cursor + 150 + this.rng() * 40, biome, { calm: true });
+        continue;
+      }
       this.sinceGrand++;
       this.sinceRescue++;
-      if (this.sinceGrand >= 7 && this.cursor > 600) {
+      // le Grand Pont ne chevauche jamais une frontière de région
+      if (this.sinceGrand >= 7 && this.cursor > 600 && border - this.cursor > cyc * 1.6 + 160 + cyc * 1.15) {
         // le grand pont : trois calculs d'affilée au-dessus d'un gouffre
         this.sinceGrand = 0;
         const spanLen = 34 + this.rng() * 6;

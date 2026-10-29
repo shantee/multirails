@@ -1,23 +1,9 @@
 // Îles flottantes : dessus fleuri, dessous en strates de couleurs, cristaux, racines et cascades.
 import * as THREE from 'three';
-import { Builder, trs } from './geo';
+import { Builder } from './geo';
 import { mulberry32, type Rng } from './model';
-
-export interface Biome {
-  name: string;
-  grass: number[];
-  rock: number[];
-  canopy: number[];
-  flower: number[];
-  crystal: number;
-}
-
-export const BIOMES: Biome[] = [
-  { name: 'prairie', grass: [0x9ad66b, 0xb8e070, 0x7cc46a], rock: [0xe2a77d, 0xc98577, 0xa56f93, 0x7a6aa8], canopy: [0x6fbf5a, 0x9bd25e, 0x4fa86a], flower: [0xffffff, 0xffe06b, 0xff8fb2], crystal: 0x8fe8ff },
-  { name: 'cerisiers', grass: [0xb6e08a, 0xd7ec92, 0xa7d985], rock: [0xf0b9a0, 0xd99ab8, 0xb184c9, 0x8a7fd0], canopy: [0xffb3d1, 0xff9cc4, 0xffd0e4], flower: [0xff7fae, 0xffffff, 0xc98bff], crystal: 0xffa8e0 },
-  { name: 'automne', grass: [0xd8d36a, 0xe8c25e, 0xc8cf6a], rock: [0xe3a06a, 0xc7785e, 0x9c5f6e, 0x6d5a85], canopy: [0xff9e44, 0xffc04d, 0xe8643a], flower: [0xfff1a8, 0xff6a4a, 0xffffff], crystal: 0xffd36b },
-  { name: 'menthe', grass: [0x84dcb4, 0xa4e8c0, 0x6fcfb0], rock: [0xa8d4e6, 0x8fb4e0, 0x8f92d6, 0x7b70b8], canopy: [0x5fcaa8, 0x7ee0c8, 0x3fb3a0], flower: [0xffffff, 0xa8f0ff, 0xffe7a0], crystal: 0xb8a0ff },
-];
+import { hangDecor, placeDecor, type DecorCtx, type Emitter } from './decor';
+import type { RegionDef } from './regions';
 
 export interface FrameFn {
   (s: number, pos: THREE.Vector3, right: THREE.Vector3, up: THREE.Vector3): void;
@@ -28,7 +14,10 @@ export interface IslandSpec {
   s1: number;
   width: number;
   depth: number;
+  /** variante de palette */
   biome: number;
+  /** région d'un élément posé à s (le hasard décide près des frontières) */
+  region: (s: number, roll: number) => RegionDef;
   seed: number;
   /** couloir libre pour la voie */
   corridor: boolean;
@@ -39,6 +28,10 @@ export interface IslandSpec {
 export interface IslandResult {
   solid: THREE.BufferGeometry;
   falls: THREE.BufferGeometry | null;
+  /** cheminées, champignons à spores… */
+  emit: Emitter[];
+  /** emplacements libres, à l'écart de la voie, pour les habitants */
+  spots: Array<{ p: THREE.Vector3; lat: number; region: RegionDef; s: number }>;
 }
 
 const tmpC = new THREE.Color();
@@ -63,9 +56,12 @@ function smoothAt(arr: number[], t: number): number {
 /** construit une île le long d'un repère (la voie, ou une ligne droite pour les îles lointaines) */
 export function buildIsland(frame: FrameFn, spec: IslandSpec): IslandResult {
   const r = mulberry32(spec.seed);
-  const biome = BIOMES[spec.biome % BIOMES.length];
-  const b = new Builder();
   const len = spec.s1 - spec.s0;
+  const home = spec.region(spec.s0 + len / 2, r());
+  const biome = home.palettes[spec.biome % home.palettes.length];
+  const b = new Builder();
+  const emit: Emitter[] = [];
+  const spots: IslandResult['spots'] = [];
   const step = Math.max(2.5, len / 60);
   const nS = Math.max(4, Math.ceil(len / step));
   const ACROSS = 10;
@@ -80,7 +76,8 @@ export function buildIsland(frame: FrameFn, spec: IslandSpec): IslandResult {
   const lip = new THREE.Color(0x9c6b55);
   const strata = biome.rock.map((h) => new THREE.Color(h));
   const tip = new THREE.Color(biome.rock[biome.rock.length - 1]).multiplyScalar(0.7);
-  const extra = 3;
+  // les îles de la voie s'arrêtent net au bord des brèches : rien ne dépasse sous le bout des rails
+  const extra = spec.corridor ? 0.5 : 3;
 
   for (let i = 0; i <= nS; i++) {
     const t = i / nS;
@@ -150,7 +147,9 @@ export function buildIsland(frame: FrameFn, spec: IslandSpec): IslandResult {
 
   // ---- décors du dessus
   const area = len * spec.width * 1.3;
-  const nDecor = Math.floor((area / 55) * spec.density);
+  // les îles lointaines, vues de loin, gardent peu de décors
+  const nDecor = Math.min(spec.corridor ? 80 : 45, Math.floor((area / 55) * spec.density));
+  const placed: THREE.Vector3[] = [];
   for (let n = 0; n < nDecor; n++) {
     const t = 0.04 + r() * 0.92;
     const s = spec.s0 + len * t;
@@ -162,21 +161,18 @@ export function buildIsland(frame: FrameFn, spec: IslandSpec): IslandResult {
     if (W <= minLat + 1) continue;
     const lat = side * (minLat + r() * (W - minLat));
     const base = P.clone().addScaledVector(R, lat).addScaledVector(U, -0.4);
-    const kind = r();
+    // pas deux éléments l'un dans l'autre
+    if (placed.some((q) => q.distanceToSquared(base) < 9)) continue;
+    placed.push(base);
     const ry = r() * Math.PI * 2;
-    if (kind < 0.42) tree(b, r, biome, base, ry);
-    else if (kind < 0.5) pine(b, r, biome, base);
-    else if (kind < 0.58) mushroom(b, r, base, ry);
-    else if (kind < 0.64 && Math.abs(lat) > 8) cottage(b, r, base, ry);
-    else if (kind < 0.7) b.add('dodeca', trs(base.x, base.y + 0.3, base.z, ry, 0.8 + r() * 1.2, 0.6 + r() * 0.8), 0xc9b8d8, 0, 0, 0.2);
-    else if (kind < 0.74 && spec.corridor && Math.abs(lat) < 9) lantern(b, base);
-    else {
-      // bouquet de fleurs
-      for (let f = 0; f < 6; f++) {
-        const fx = base.x + (r() - 0.5) * 3, fz = base.z + (r() - 0.5) * 3;
-        b.add('tetra', trs(fx, base.y + 0.25, fz, r() * 6, 0.22 + r() * 0.15), pick(r, biome.flower), 0.6, 0.15);
-      }
+    const reg = spec.region(s, r());
+    const ctx: DecorCtx = { b, r, pal: reg.palettes[spec.biome % reg.palettes.length], emit };
+    // un emplacement sur cinq reste libre pour une petite scène vivante
+    if (spec.corridor && Math.abs(lat) > 7.5 && Math.abs(lat) < 14 && r() < 0.2) {
+      spots.push({ p: base, lat, region: reg, s });
+      continue;
     }
+    placeDecor(ctx, reg, base, ry, spec.corridor ? Math.abs(lat) : 99);
   }
 
   // ---- dessous : cristaux et racines suspendus
@@ -190,18 +186,12 @@ export function buildIsland(frame: FrameFn, spec: IslandSpec): IslandResult {
     const lat = (r() - 0.5) * spec.width * 0.9 * shape;
     const yy = -2 - spec.depth * shape * (0.3 + r() * 0.4) * (1 - Math.abs(lat) / (spec.width + 1));
     const p = P.clone().addScaledVector(R, lat).addScaledVector(U, yy);
-    if (r() < 0.55) {
-      const h = 3 + r() * 6;
-      b.add('cone6', trs(p.x, p.y - h * 0.5, p.z, r() * 3, 0.5 + r() * 0.9, h, 0.5 + r() * 0.9, Math.PI + (r() - 0.5) * 0.4), biome.crystal, 0, 0.9);
-    } else {
-      const h = 4 + r() * 10;
-      b.add('cone6', trs(p.x, p.y - h * 0.5, p.z, r() * 3, 0.25, h, 0.25, Math.PI + (r() - 0.5) * 0.3, (r() - 0.5) * 0.3), 0x7a5546, 0.4);
-    }
+    hangDecor({ b, r, pal: biome, emit }, home.under, p);
   }
 
   // ---- cascades : rubans d'eau qui tombent du bord dans la mer de nuages
   let falls: THREE.BufferGeometry | null = null;
-  const nFalls = len > 50 && r() < 0.75 ? 1 + Math.floor(r() * 2) : 0;
+  const nFalls = len > 50 && home.under !== 'ice' && home.under !== 'brass' && r() < 0.75 ? 1 + Math.floor(r() * 2) : 0;
   if (nFalls) {
     const fp: number[] = [], fu: number[] = [];
     for (let n = 0; n < nFalls; n++) {
@@ -232,7 +222,7 @@ export function buildIsland(frame: FrameFn, spec: IslandSpec): IslandResult {
         fu.push(0, v0, 1, v0, 1, v1, 0, v0, 1, v1, 0, v1);
       }
       // petit bassin au départ de la cascade
-      b.add('cyl8', trs(top.x - out.x * 2.5, top.y + 0.05, top.z - out.z * 2.5, 0, 2.4, 0.15, 2.4), 0x8fe3ff, 0, 0.3);
+      b.add('cyl8', new THREE.Matrix4().compose(new THREE.Vector3(top.x - out.x * 2.5, top.y + 0.05, top.z - out.z * 2.5), new THREE.Quaternion(), new THREE.Vector3(2.4, 0.15, 2.4)), 0x8fe3ff, 0, 0.3);
     }
     falls = new THREE.BufferGeometry();
     falls.setAttribute('position', new THREE.Float32BufferAttribute(fp, 3));
@@ -240,60 +230,7 @@ export function buildIsland(frame: FrameFn, spec: IslandSpec): IslandResult {
     falls.computeBoundingSphere();
   }
 
-  return { solid: b.geometry(), falls };
-}
-
-function tree(b: Builder, r: Rng, biome: Biome, p: THREE.Vector3, ry: number): void {
-  const h = 2.2 + r() * 2.5;
-  b.add('cyl6', trs(p.x, p.y + h / 2, p.z, ry, 0.22, h, 0.22), 0x8a5a44);
-  const n = 1 + Math.floor(r() * 3);
-  for (let i = 0; i < n; i++) {
-    const s = 1.4 + r() * 1.3;
-    b.add('ico', trs(p.x + (r() - 0.5) * 1.4, p.y + h + s * 0.5 + i * 0.6, p.z + (r() - 0.5) * 1.4, r() * 6, s), pick(r, biome.canopy), 0.5, 0, 0.18);
-  }
-}
-
-function pine(b: Builder, r: Rng, biome: Biome, p: THREE.Vector3): void {
-  const h = 4 + r() * 4;
-  b.add('cyl6', trs(p.x, p.y + 0.6, p.z, 0, 0.25, 1.2, 0.25), 0x7a4e3a);
-  const col = new THREE.Color(pick(r, biome.canopy)).multiplyScalar(0.8);
-  for (let i = 0; i < 3; i++) {
-    const w = (1.8 - i * 0.45) * (h / 6);
-    b.add('cone8', trs(p.x, p.y + 1 + i * h * 0.22 + h * 0.18, p.z, r() * 6, w, h * 0.42, w), col, 0.3, 0, 0.12);
-  }
-}
-
-function mushroom(b: Builder, r: Rng, p: THREE.Vector3, ry: number): void {
-  const h = 1.6 + r() * 3.5;
-  const capC = [0xff6f7d, 0xffb05c, 0xb48cff, 0x6fd3ff][Math.floor(r() * 4)];
-  b.add('cyl8', trs(p.x, p.y + h / 2, p.z, ry, 0.35 + h * 0.06, h, 0.35 + h * 0.06), 0xfff1dc);
-  const w = 1.2 + h * 0.45;
-  b.add('cap', trs(p.x, p.y + h - 0.1, p.z, ry, w, w * 0.6, w, (r() - 0.5) * 0.3), capC, 0.15, 0.25);
-  // points blancs sur le chapeau
-  for (let i = 0; i < 4; i++) {
-    const a = r() * Math.PI * 2;
-    const rr = w * (0.3 + r() * 0.4);
-    b.add('ico', trs(p.x + Math.cos(a) * rr, p.y + h - 0.1 + w * 0.6 * Math.sqrt(1 - (rr / w) ** 2), p.z + Math.sin(a) * rr, 0, w * 0.12), 0xffffff);
-  }
-}
-
-function cottage(b: Builder, r: Rng, p: THREE.Vector3, ry: number): void {
-  const wall = [0xfff3e0, 0xffe0e8, 0xe8f4ff, 0xfff6c8][Math.floor(r() * 4)];
-  const roof = [0xff7a6b, 0x6b8cff, 0x9b6bff, 0x4fc39b][Math.floor(r() * 4)];
-  const w = 3 + r() * 1.5, d = 3 + r() * 1.5, h = 2.4 + r();
-  b.add('box', trs(p.x, p.y + h / 2, p.z, ry, w, h, d), wall);
-  b.add('prism', trs(p.x, p.y + h, p.z, ry, w * 1.15, 2.4, d * 1.1), roof);
-  const c = Math.cos(ry), s = Math.sin(ry);
-  b.add('box', trs(p.x + c * w * 0.25, p.y + h + 1.2, p.z - s * w * 0.25, ry, 0.5, 1.6, 0.5), 0xb07060);
-  // fenêtre qui s'allume la nuit
-  b.add('box', trs(p.x + s * (d / 2 + 0.02), p.y + h * 0.55, p.z + c * (d / 2 + 0.02), ry, 0.8, 0.8, 0.08), 0xffd27a, 0, 1);
-  b.add('box', trs(p.x - s * (d / 2 + 0.02), p.y + h * 0.4, p.z - c * (d / 2 + 0.02), ry, 0.7, 1.3, 0.08), 0x8a5a44);
-}
-
-function lantern(b: Builder, p: THREE.Vector3): void {
-  b.add('cyl6', trs(p.x, p.y + 1.5, p.z, 0, 0.08, 3, 0.08), 0x3e3550);
-  b.add('box', trs(p.x, p.y + 3.1, p.z, 0.4, 0.45, 0.6, 0.45), 0xffcf70, 0, 1.4);
-  b.add('cone6', trs(p.x, p.y + 3.55, p.z, 0.4, 0.42, 0.35, 0.42), 0x3e3550);
+  return { solid: b.geometry(), falls, emit, spots };
 }
 
 /** matériau des cascades : stries qui défilent et fondu vers le bas */

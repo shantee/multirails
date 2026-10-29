@@ -83,6 +83,9 @@ function makePieceMaterial(shared: { uTime: { value: number }; uTrain: { value: 
         float e = 1. + 2.4 * tm * tm * tm + 1.4 * tm * tm;
         vec3 local = rotK(position - aPivot, aAxis, (1. - t) * (1. - t) * 8.) * (t <= 0. ? 0. : mix(.25, 1., e));
         vec3 off = aFly.xyz * (1. - e);
+        // les pièces montent en tourbillon autour de leur place, chacune dans un sens
+        float sw = (1. - e) * 2.6 * (fract(aPivot.x * .13 + aPivot.z * .07) > .5 ? 1. : -1.);
+        off.xz = mat2(cos(sw), -sin(sw), sin(sw), cos(sw)) * off.xz;
         if (aWob > 0.) {
           float d = distance(aPivot, uTrain);
           off.y += aWob * (sin(uTime * 3. + aPivot.x * .7 + aPivot.z) * .05 - exp(-d * d / 30.) * (.18 + sin(uTime * 30. + aPivot.z) * .05));

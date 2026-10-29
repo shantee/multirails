@@ -53,7 +53,7 @@ Captures réelles : [diag/captures/](diag/captures/).
 - [ ] Philippe : jouer sur ordinateur et sur une vraie tablette ; avis sur le rythme (temps par calcul, accélération).
 - [ ] Faire jouer un enfant : vitesse Promenade, lisibilité de la plaque, compréhension des wagons-vies.
 - [ ] Écoute réelle du son et de la musique (volumes, fatigue).
-- [ ] Idées non faites : aiguillages à choix, tunnels, second univers (cité des engrenages, monde des bonbons).
+- [ ] Idées non faites : aiguillages à choix, tunnels, calculs combinés (additions + multiplications).
 - [ ] Toute intégration à Calcoolos attend une décision explicite.
 
 ## Retour arrière
@@ -62,6 +62,19 @@ Rien n'est installé hors du dossier du projet. Arrêter Vite (Ctrl+C). Clés `l
 `multirail-prefs`, `multirail-records`, `multirail-mastery`.
 
 ## Journal
+
+### 2026-10-29 — Claude (chantier 2 : un voyage vivant)
+
+- Sept régions (Prés-Volants, Forêt des Spores, Hameaux Perchés, Cimes de Givre, Cité des Engrenages, Récif des Nuées,
+  Confins Étoilés) avec palettes, ciels, décors animés sur la carte graphique, habitants en petites scènes, volées,
+  poussières d'ambiance et un monument chacune ; mélange progressif aux frontières ; la voie monte de région en région ;
+  île de contemplation à chaque frontière (pas de calcul, panorama, musique apaisée).
+- Caméra réalisatrice (`director.ts`) : poursuite qui respire, profil au bord du vide, plan sur le chantier, monuments,
+  panoramas, Grand Pont ; fondus entre plans ; option « Caméra : calme ».
+- Chute refaite (`fall.ts`) : bascule au ralenti, torchon à carreaux, soupape, amis aux parapluies, canard, amerrissage ;
+  les îles ne dépassent plus sous le bout des rails (c'était la cause du train qui tombait « dans » l'île).
+- Ponts : pièces qui montent en tourbillon, souffle et « clac » sonores. Fin de voyage : régions traversées.
+- `window.__multirail` n'est plus exposé en production (sauf `?test`). 19 tests verts, build vérifié, captures 16 à 33.
 
 ### 2026-10-29 — Claude
 

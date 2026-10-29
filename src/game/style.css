@@ -296,3 +296,19 @@ button { font-family: inherit; color: inherit; cursor: pointer; border: 0; backg
 @media (prefers-reduced-motion: reduce) {
   .logo, .newrec, .mult.boil { animation: none; }
 }
+
+/* ---- chantier 2 : voyage, cinéma, chute */
+.journey { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 6px; font-size: 22px; }
+.journey span { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.journey small { font-size: 10.5px; color: var(--plum2); opacity: .75; max-width: 76px; text-align: center; margin-top: 2px; }
+.journey i { font-style: normal; color: var(--plum2); opacity: .5; font-size: 16px; }
+.cinebar { position: fixed; left: 0; right: 0; height: 0; background: #1b1026; z-index: 0; pointer-events: none; transition: height .9s ease; }
+.cinebar.top { top: 0; }
+.cinebar.bottom { bottom: 0; }
+body.cine .cinebar { height: 6.5vh; }
+.skip-hint {
+  position: fixed; left: 50%; bottom: 9vh; transform: translateX(-50%); color: #fff; font-weight: 600; font-size: 15px; opacity: 0;
+  text-shadow: 0 2px 6px rgba(27, 16, 38, .6); pointer-events: none; transition: opacity .5s; z-index: 2;
+}
+.skip-hint.show { opacity: .85; animation: pulse 1.4s infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .cinebar { transition: none; } .skip-hint.show { animation: none; } }

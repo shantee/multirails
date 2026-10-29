@@ -230,6 +230,40 @@ export class Fx {
     }
   }
 
+  /** petites bulles de sommeil qui montent en zigzag */
+  zzz(at: THREE.Vector3): void {
+    this.soft.spawn({
+      pos: at, vel: this.v.set(0.6, 1.1, 0), color: 0xd8c8ff, size0: 0.25, size1: 0.7, life: 2.2, drag: 0.4, grav: 0, alpha: 0.8,
+    });
+  }
+
+  /** fumée d'une cheminée du décor */
+  smoke(at: THREE.Vector3, color = 0xf4f0ff): void {
+    this.soft.spawn({
+      pos: at, vel: this.v.set(this.rnd(0.6) + 0.8, 1.6 + Math.random(), this.rnd(0.6)), color,
+      size0: 0.6, size1: 2.6, life: 2.4, drag: 0.6, grav: -0.2, alpha: 0.35,
+    });
+  }
+
+  /** spores lumineuses qui s'échappent des champignons géants */
+  spore(at: THREE.Vector3): void {
+    this.glow.spawn({
+      pos: this.v.copy(at).add(new THREE.Vector3(this.rnd(6), 0, this.rnd(6))), vel: new THREE.Vector3(this.rnd(1), -0.4 - Math.random() * 0.6, this.rnd(1)),
+      color: RAINBOW[Math.floor(Math.random() * RAINBOW.length)], size0: 0.35, size1: 0.15, life: 3, drag: 0.3, grav: 0, shape: 0,
+    });
+  }
+
+  /** gros anneau de nuage quand on atterrit dans la mer de nuages */
+  cloudRing(at: THREE.Vector3, n: number): void {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      this.soft.spawn({
+        pos: at, vel: this.v.set(Math.cos(a) * 9, 1 + Math.random() * 2, Math.sin(a) * 9), color: 0xffffff,
+        size0: 2, size1: 6, life: 1.8, drag: 1.8, grav: -0.4, alpha: 0.8,
+      });
+    }
+  }
+
   update(dt: number): void {
     this.soft.update(dt);
     this.glow.update(dt);

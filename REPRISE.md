@@ -8,7 +8,7 @@
 git clone https://github.com/shantee/multirails.git
 cd multirails/src
 npm ci
-npm test          # 14 tests de logique
+npm test          # 19 tests de logique
 npm run build     # TypeScript strict + version statique dans dist/
 npm run dev       # http://127.0.0.1:5173
 ```
@@ -17,51 +17,43 @@ Node.js 22 ou plus récent. Aucun compte, aucun serveur, aucune ressource extern
 est produit par le code. Règles du jeu, architecture et paramètres de test : [src/README.md](src/README.md).
 
 Paramètres d'adresse utiles pour essayer vite : `?graine=42` (monde reproductible), `?depart=1.6` (partir à 1,6 km),
-`?auto=1.2` (répond juste après 1,2 s), `?auto=faux` (répond faux). `window.__multirail` expose l'état
-(`state`, `s`, `v`, `run`, `fps`, `info()`, `setQuality()`, `start()`, `segs()`).
+`?auto=1.2` (répond juste après 1,2 s), `?auto=faux` (répond faux), `?vite=2` (temps accéléré).
+`window.__multirail` (en développement ou avec `?test`) expose l'état : `state`, `s`, `v`, `run`, `shot`, `region`,
+`fall`, `info()`, `regions()`, `segs()`, `start()`, `lose()`.
 
 ## État actuel
 
 - Prototype jouable de bout en bout : accueil, Aventure, Entraînement, pause, fin de voyage, records et maîtrise
   des tables en `localStorage`.
-- Vérifié dans Chrome (WebGL 2) sur ordinateur 1280 × 800, tablette 820 × 1180 et téléphone 390 × 844 / 844 × 390 :
-  60 i/s dans les trois qualités, ~190 appels de dessin, ~160 000 triangles.
-- Captures réelles : [diag/captures/](diag/captures/).
-- **Pas encore fait** : essai sur une vraie tablette, écoute réelle du son, essai avec un enfant.
+- **Chantier 2 (branche `chantier-2-voyage`)** : sept régions avec leurs décors, habitants et monuments, montée en
+  altitude, îles de contemplation aux frontières ; caméra « réalisatrice » ; nouvelle chute en parachute (torchon à
+  carreaux) ; construction des ponts plus spectaculaire. Détails dans [src/README.md](src/README.md).
+- Vérifié dans Chrome headless (rendu logiciel SwiftShader, donc pas de mesure d'images par seconde fiable) :
+  ordinateur 1280 × 800, tablette 820 × 1180, téléphone 390 × 844 ; 0 erreur console ; 19 tests de logique verts.
+- Captures : [diag/captures/](diag/captures/) (16 à 33 pour le chantier 2).
+- **Pas encore fait** : essai sur une vraie tablette (images par seconde !), écoute réelle du son, essai avec un enfant.
 
 ## Points faibles et bugs connus
 
-Rien de bloquant n'est connu. Points relevés à la relecture du code et pendant les essais :
-
-- **Caméra** (`updateCamera`, `game/main.ts`) : une seule caméra de poursuite, assez rigide (11,5 m derrière,
-  7,4 m au-dessus, visée 22 m devant). Le passage vers le plan de côté du Grand Pont et le retour se font par simple
-  interpolation : la bascule est un peu brusque. Ce plan ne se déclenche que si les trois travées sont construites.
-- **Chute en parachute** (`startFall`, `updateFall`, `makeParachute`) : courte (4,2 s, la locomotive descend d'une
-  dizaine de mètres seulement), caméra fixe au bord du vide, écran de fin qui coupe la descente. Les wagons et
-  voyageurs restants ne suivent pas. Le parachute est recréé à chaque chute (géométries non mises en cache).
-- **Variété** : 4 biomes d'îles (prairie, cerisiers, automne, menthe) qui ne changent que les couleurs sur la même
-  structure ; 5 ambiances de ciel de 1,5 km chacune, qui bouclent après 7,5 km ; une seule créature (la baleine-nuage).
-- **Relief** : la voie monte et descend un peu, mais le voyage reste à altitude à peu près constante.
-- `game/main.ts` (~1 100 lignes) concentre conduite, caméra, mise en scène et états : à découper avant de gros ajouts.
-- `window.__multirail` (outil de test) est présent aussi dans la version de production.
-- WebGL 2 seulement ; shaders GLSL écrits à la main (injectés par `onBeforeCompile` dans les matériaux Three.js).
+- **Performances à vérifier sur tablette** : 130 à 290 appels de dessin, 115 000 à 240 000 triangles selon la région
+  (qualité haute). Les Hameaux Perchés sont la région la plus lourde. Leviers : `QUALITY` dans `main.ts`
+  (densité, nombre de scènes vivantes par île, poussières), plafond de décors par île dans `islands.ts`.
+- La locomotive et les wagons restent faits de nombreux petits maillages (~150 appels de dessin à eux seuls) :
+  les fusionner serait le plus gros gain.
+- Les caméras de côté se placent au-dessus du vide, hors de l'emprise des îles ; il n'y a pas de test de collision
+  réel avec le décor. Un très grand élément (champignon géant, monument) peut passer près de l'objectif.
+- La chute a été vérifiée dans les Prés-Volants et les Hameaux Perchés, pas encore depuis un Grand Pont.
+- `game/main.ts` reste le chef d'orchestre (~1 000 lignes) ; caméra, chute, décors et vie sont désormais à part.
+- Shaders GLSL écrits à la main (injectés par `onBeforeCompile`), WebGL 2 seulement.
 
 ## Prochaines idées
 
-1. **Caméra vivante** : plans variés selon la situation (départ, virage, brèche dangereuse, Ébullition, Grand Pont),
-   transitions douces, léger décalage dans les virages, plans larges de temps en temps.
-2. **Chute en parachute** : une vraie séquence de fin, plus longue, caméra qui accompagne la descente dans la mer de
-   nuages, wagons et voyageurs qui suivent avec leurs parapluies, atterrissage ou rebond comique avant l'écran de fin.
-3. **Biomes variés** : de vraies différences de forme et pas seulement de couleur (forêt de champignons géants,
-   îles de glace et cristaux, jardins suspendus, cité d'engrenages, monde des bonbons), avec leurs décors et leurs sons.
-4. **Toujours plus haut et plus loin** : le voyage monte au fil des kilomètres (mer de nuages, puis ciel ouvert,
-   puis étoiles), avec des horizons qui changent et un sentiment de progression.
-5. **Univers vivant** : oiseaux, bancs de poissons volants, montgolfières, autres trains au loin, habitants des îles
-   qui saluent ; la baleine-nuage et d'autres créatures avec des comportements.
-6. **Moments de contemplation** : de courtes pauses sans calcul après un Grand Pont ou un changement d'ambiance
-   (caméra large, musique qui respire), pour souffler entre deux séries.
-
-Autres pistes notées : aiguillages à choix, tunnels.
+1. **Calculs plus riches** (demandé par Philippe pour une étape suivante) : additions et multiplications combinées
+   (« 15 + 27 + 3 × 2 »). Point d'entrée : `Fact` / `answerOf` / `QuestionDeck` dans `model.ts` et l'affichage de la
+   plaque dans `ui.ts` (`showQuestion`) ; la longueur des brèches est déjà calée sur un temps de réponse
+   (`referenceTime`), qu'il faudra moduler selon la difficulté du calcul.
+2. Fusionner les maillages du train (gain de performances).
+3. Aiguillages à choix, tunnels, autres régions (monde des bonbons…).
 
 ## Règles du projet
 
