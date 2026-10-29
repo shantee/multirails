@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { TrackPath } from './track';
 
-export type ShotName = 'title' | 'follow' | 'edge' | 'flyby' | 'panorama' | 'landmark' | 'grand' | 'fall';
+export type ShotName = 'title' | 'follow' | 'edge' | 'flyby' | 'panorama' | 'landmark' | 'grand' | 'fall' | 'travelling';
 
 export interface CamPose {
   pos: THREE.Vector3;
@@ -34,6 +34,8 @@ export interface ShotInput {
   landmark?: { center: THREE.Vector3; height: number };
   /** pose imposée (chute) */
   forced?: CamPose;
+  /** côté du travelling */
+  side?: number;
 }
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -104,6 +106,7 @@ export class Director {
       case 'panorama': this.panorama(i, T); break;
       case 'landmark': this.landmarkShot(i, T); break;
       case 'grand': this.grandShot(i, T); break;
+      case 'travelling': this.travelling(i, T); break;
       case 'fall': if (i.forced) copyPose(T, i.forced); break;
     }
     const k = ease(Math.min(1, (i.t - this.blendAt) / this.blendDur));
@@ -216,6 +219,20 @@ export class Director {
     const toMark = target.clone().sub(T.pos).normalize();
     T.look.copy(T.pos).add(toTrain.multiplyScalar(0.55).add(toMark.multiplyScalar(0.45)).multiplyScalar(40));
     T.fov = i.portrait ? 76 : 64;
+    T.roll = 0;
+  }
+
+  /**
+   * travelling au ras de l'eau : la caméra glisse le long du train, juste au-dessus de la surface,
+   * comme un voyageur qui regarde par la fenêtre ; les gares et les enseignes défilent derrière
+   */
+  private travelling(i: ShotInput, T: CamPose): void {
+    const side = i.side ?? 1;
+    const F = i.path.frame(Math.max(0, i.s - 4));
+    const u = ease(Math.min(1, this.since / 8));
+    T.pos.copy(F.pos).addScaledVector(F.right, side * 7.2).addScaledVector(Y, 2 + Math.sin(i.t * 0.5) * 0.15).addScaledVector(F.fwd, 2 - u * 3);
+    i.path.point(i.s - 2, T.look).addScaledVector(Y, 1.7).addScaledVector(F.right, -side * 4);
+    T.fov = i.portrait ? 70 : 54;
     T.roll = 0;
   }
 

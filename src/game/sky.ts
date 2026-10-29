@@ -16,6 +16,8 @@ export interface Ambience {
   hemiGround: THREE.Color;
   sunPower: number;
   night: number;
+  /** brume : le brouillard se rapproche */
+  mist: number;
 }
 
 const C = (hex: number) => new THREE.Color(hex);
@@ -23,23 +25,23 @@ const C = (hex: number) => new THREE.Color(hex);
 export const AMBIENCES: Ambience[] = [
   {
     name: "L'Aube rose", emoji: '🌸', top: C(0x7d8fe0), horizon: C(0xffc7c2), sun: C(0xffd6a8), elev: 0.16, azim: 0.6,
-    cloudLit: C(0xfff0ea), cloudShade: C(0xc79ad6), hemiSky: C(0xd9c9ff), hemiGround: C(0xf5a89a), sunPower: 2.2, night: 0,
+    cloudLit: C(0xfff0ea), cloudShade: C(0xc79ad6), hemiSky: C(0xd9c9ff), hemiGround: C(0xf5a89a), sunPower: 2.2, night: 0, mist: 0,
   },
   {
     name: 'Le Grand Ciel', emoji: '☀️', top: C(0x3d8fe8), horizon: C(0xc4ecff), sun: C(0xfff4dc), elev: 0.75, azim: -0.4,
-    cloudLit: C(0xffffff), cloudShade: C(0x9fbfe6), hemiSky: C(0xcfe9ff), hemiGround: C(0x9fd6a0), sunPower: 2.6, night: 0,
+    cloudLit: C(0xffffff), cloudShade: C(0x9fbfe6), hemiSky: C(0xcfe9ff), hemiGround: C(0x9fd6a0), sunPower: 2.6, night: 0, mist: 0,
   },
   {
     name: "L'Heure dorée", emoji: '🍯', top: C(0x5a86d6), horizon: C(0xffd89a), sun: C(0xffc070), elev: 0.28, azim: 0.9,
-    cloudLit: C(0xfff1cf), cloudShade: C(0xd59a8a), hemiSky: C(0xffe1b0), hemiGround: C(0xd7a37a), sunPower: 2.5, night: 0,
+    cloudLit: C(0xfff1cf), cloudShade: C(0xd59a8a), hemiSky: C(0xffe1b0), hemiGround: C(0xd7a37a), sunPower: 2.5, night: 0, mist: 0,
   },
   {
     name: 'Le Couchant framboise', emoji: '🍓', top: C(0x3c3a8c), horizon: C(0xff7a7a), sun: C(0xff8f5a), elev: 0.07, azim: -0.2,
-    cloudLit: C(0xffb6a0), cloudShade: C(0x7b4f9e), hemiSky: C(0xff9fb0), hemiGround: C(0x6e4a8c), sunPower: 2.0, night: 0.25,
+    cloudLit: C(0xffb6a0), cloudShade: C(0x7b4f9e), hemiSky: C(0xff9fb0), hemiGround: C(0x6e4a8c), sunPower: 2.0, night: 0.25, mist: 0,
   },
   {
     name: 'La Nuit des aurores', emoji: '✨', top: C(0x0b1240), horizon: C(0x3a3f8f), sun: C(0xbfd4ff), elev: 0.55, azim: 0.3,
-    cloudLit: C(0x9aa9e6), cloudShade: C(0x2a2766), hemiSky: C(0x6f7fd6), hemiGround: C(0x2b2f6e), sunPower: 0.9, night: 1,
+    cloudLit: C(0x9aa9e6), cloudShade: C(0x2a2766), hemiSky: C(0x6f7fd6), hemiGround: C(0x2b2f6e), sunPower: 0.9, night: 1, mist: 0,
   },
 ];
 
@@ -292,6 +294,10 @@ export class Sky {
     a.azim = target.azim;
     a.sunPower = target.sunPower;
     a.night = target.night;
+    a.mist = target.mist;
+    // la brume rapproche le brouillard
+    this.fog.near = 160 - 110 * a.mist;
+    this.fog.far = 1500 - 900 * a.mist;
     // plus on monte, plus la mer de nuages paraît loin dessous
     this.seaY = -62 + altitude * 0.55;
     // le soleil reste à peu près devant le train, légèrement de côté

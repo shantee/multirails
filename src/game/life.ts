@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { Builder, trs, type Anim } from './geo';
 import { mulberry32, type Rng } from './model';
 import type { MoteKind, RegionDef } from './regions';
+import { shadowFigure, shadowMaterial } from './mer';
 
 const Y = new THREE.Vector3(0, 1, 0);
 const X = new THREE.Vector3(1, 0, 0);
@@ -192,6 +193,18 @@ const rabbit = () => cached('rabbit', (b) => {
   put(b, 'sph', 0, 0.38, -0.38, 0.1, 0.1, 0.1, 0xffffff);
 });
 
+const boat = () => cached('boat', (b) => {
+  put(b, 'box', 0, 0.25, 0, 1.3, 0.45, 3.2, 0x6a4a3a);
+  put(b, 'box', 0, 0.48, 0, 1.1, 0.1, 3, 0x8a6a50);
+  put(b, 'cone4', 0, 0.3, 1.9, 0.65, 0.8, 0.3, 0x6a4a3a, { rx: Math.PI / 2, ry: Math.PI / 4 });
+  // perche et lanterne à la proue
+  put(b, 'cyl6', 0, 1.4, 1.5, 0.04, 2.2, 0.04, 0x3a2a30);
+  put(b, 'cyl8', 0, 2.3, 1.9, 0.18, 0.34, 0.18, 0xffcf70, { glow: 2.2 });
+  put(b, 'cyl6', 0.45, 1.2, -0.6, 0.025, 3, 0.025, 0x3a2a30, { rz: -0.6, anim: { kind: 4, pivot: new THREE.Vector3(0.3, 0.8, -0.6), axis: Z, param: 0.08 } });
+});
+
+const shadowGeo = (k: number) => cached(`shadow${k}`, (b) => shadowFigure(b, new THREE.Vector3(), 0, mulberry32(k + 5)));
+
 const moth = () => cached('moth', (b) => {
   put(b, 'sph', 0, 0, 0, 0.12, 0.12, 0.35, 0x6a4a6a);
   for (const s of [-1, 1]) put(b, 'sph', s * 0.45, 0, 0, 0.5, 0.03, 0.35, 0xffb0f0, { glow: 1.4, anim: { kind: 5, pivot: new THREE.Vector3(0, 0, 0), axis: Z, param: s * 0.7 } });
@@ -243,6 +256,8 @@ export class Vignette {
   private t0: number;
   private near = 0;
   private lastFx = 0;
+  /** lanterne de la scène, dont le reflet se dessine sur l'eau */
+  light: THREE.Object3D | null = null;
 
   constructor(
     readonly kind: string,
@@ -326,6 +341,27 @@ export class Vignette {
       }
       case 'lapins':
         for (let i = 0; i < 3; i++) add(rabbit());
+        break;
+      case 'pecheur': {
+        // la barque flotte à la surface (le sol du bassin est sous l'eau)
+        const bt = add(boat());
+        bt.position.y = 0.72;
+        const [a] = vill(false, 2);
+        const man = add(a);
+        man.scale.setScalar(0.85);
+        man.position.set(0, 1.0, -0.5);
+        this.light = new THREE.Object3D();
+        this.light.position.set(0, 3.0, 1.9);
+        bt.add(this.light);
+        break;
+      }
+      case 'ombres':
+        for (let i = 0; i < 3; i++) {
+          const m = new THREE.Mesh(shadowGeo(i), shadowMaterial());
+          m.position.set((i - 1) * 1.6, 0.75, (r() - 0.5) * 1.2);
+          this.group.add(m);
+          this.actors.push({ mesh: m, idle: m.geometry });
+        }
         break;
     }
     this.props(kind, r);
@@ -507,6 +543,24 @@ export class Vignette {
         A[0].mesh.position.y = excited ? Math.abs(Math.sin(t * 7)) * 0.4 : 0;
         face(A[0], Math.PI / 2 + Math.sin(t * 0.3) * 0.3);
         break;
+      case 'pecheur': {
+        // la barque se balance doucement ; le pêcheur salue d'un signe de tête
+        const bt = A[0].mesh;
+        bt.position.y = 0.72 + Math.sin(t * 1.3) * 0.06;
+        bt.rotation.z = Math.sin(t * 1.1) * 0.05;
+        bt.rotation.x = Math.sin(t * 0.8) * 0.03;
+        A[1].mesh.position.y = bt.position.y + 0.28;
+        A[1].mesh.rotation.y = excited ? faceTrain : Math.PI;
+        A[1].mesh.rotation.x = excited ? Math.sin(t * 4) * 0.12 : 0;
+        break;
+      }
+      case 'ombres':
+        // elles se tournent lentement vers le train qui passe
+        A.forEach((a, i) => {
+          const want = excited ? faceTrain : Math.sin(t * 0.1 + i) * 0.4;
+          a.mesh.rotation.y += (want - a.mesh.rotation.y) * Math.min(1, dt * 0.8);
+        });
+        break;
       case 'lapins':
         A.forEach((a, i) => {
           // gravité lunaire : de grands bonds lents
@@ -537,6 +591,7 @@ export const VIGNETTES: Record<RegionDef['key'], string[]> = {
   engrenages: ['robot', 'chien', 'villageois'],
   recif: ['crabe', 'pieuvre'],
   confins: ['astronome', 'lapins'],
+  mer: ['pecheur', 'ombres', 'pecheur'],
 };
 
 // ------------------------------------------------------------------ volées
@@ -584,7 +639,7 @@ export class Flock {
       geo = drone();
       speed = 9;
       n = 5;
-    } else if (k === 'confins') {
+    } else if (k === 'confins' || k === 'mer') {
       geo = skyLantern();
       this.style = 'rise';
       speed = 2;
@@ -654,6 +709,7 @@ const MOTES: Record<MoteKind, { size: number; fall: number; drift: number; glow:
   sparks: { size: 0.07, fall: -0.9, drift: 0.8, glow: 1.8, twinkle: 1 },
   bubbles: { size: 0.18, fall: -0.7, drift: 0.4, glow: 0.5, twinkle: 0 },
   stardust: { size: 0.1, fall: 0.1, drift: 0.3, glow: 2, twinkle: 1 },
+  fireflies: { size: 0.12, fall: -0.05, drift: 1.2, glow: 2.2, twinkle: 1 },
 };
 
 /** points flottants autour de la caméra, entièrement calculés par la carte graphique */

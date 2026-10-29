@@ -244,8 +244,10 @@ export class RailSystem {
     const delayAt = (s: number, jitter = 0.12) => (seg.kind === 'island' ? 0 : (s - seg.s0) / speed + r() * jitter);
     const island = seg.kind === 'island';
     const rescue = !!rescueFrom;
-    const sleeperC = island ? 0x6e4a3e : rescue ? 0x9a7a5c : seg.style === 'grand' ? 0xf4e3c3 : 0xe9b56f;
-    const railC = island ? 0x8d8aa8 : rescue ? 0x6b5a4a : 0xffcf5c;
+    // la Mer des Lanternes a ses ponts de bois laqué rouge
+    const mer = seg.theme === 'mer';
+    const sleeperC = island ? 0x6e4a3e : rescue ? 0x9a7a5c : seg.style === 'grand' ? 0xf4e3c3 : mer ? 0x5a3a2e : 0xe9b56f;
+    const railC = island ? 0x8d8aa8 : rescue ? 0x6b5a4a : mer ? 0xe0c890 : 0xffcf5c;
 
     for (let i = 0; i < n; i++) {
       const s = seg.s0 + (i + 0.5) * step;
@@ -273,12 +275,12 @@ export class RailSystem {
         continue;
       }
       // longerons latéraux
-      for (const side of [-1, 1]) b.add('box', pieceMatrix(f, side * 1.2, -0.25, 0, 0.22, 0.3, step * 1.02), seg.style === 'grand' ? 0xd8c7ff : 0xff9fb8, scatter(f.pos), d + 0.08);
+      for (const side of [-1, 1]) b.add('box', pieceMatrix(f, side * 1.2, -0.25, 0, 0.22, 0.3, step * 1.02), seg.style === 'grand' ? 0xd8c7ff : mer ? 0x9c2f3a : 0xff9fb8, scatter(f.pos), d + 0.08);
       // lanternes de part et d'autre
       if (i % 7 === 3) {
         const side = (i / 7) % 2 < 1 ? -1 : 1;
         b.add('cyl6', pieceMatrix(f, side * 1.35, 0.9, 0, 0.06, 1.8, 0.06), 0x4a3f66, scatter(f.pos), d + 0.15);
-        b.add('ico', pieceMatrix(f, side * 1.35, 1.95, 0, 0.26, 0.3, 0.26), 0xfff0a0, scatter(f.pos), d + 0.2);
+        b.add('ico', pieceMatrix(f, side * 1.35, 1.95, 0, 0.26, 0.3, 0.26), mer ? 0xff8a4a : 0xfff0a0, scatter(f.pos), d + 0.2);
       }
     }
 
@@ -297,7 +299,7 @@ export class RailSystem {
     const len = seg.s1 - seg.s0;
     const k = Math.max(8, Math.round(len / 2.2));
     const sag = Math.min(9, len * 0.2);
-    const colors = [0x9ff0d8, 0xffc4dc, 0xfff1b8, 0xc9b8ff];
+    const colors = seg.theme === 'mer' ? [0x9c2f3a, 0x7a1f2b, 0xb8452f, 0x8f2b35] : [0x9ff0d8, 0xffc4dc, 0xfff1b8, 0xc9b8ff];
     let prev: THREE.Vector3 | null = null;
     for (let i = 0; i <= k; i++) {
       const t = i / k;

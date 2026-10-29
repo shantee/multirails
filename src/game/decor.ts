@@ -6,8 +6,10 @@ import * as THREE from 'three';
 import { Builder, trs, type Anim } from './geo';
 import type { Rng } from './model';
 import type { Palette, RegionDef, Underside } from './regions';
+import { SHOP_WORDS, signAtlas, shadowFigure, type SignBuilder } from './mer';
 
-export type EmitKind = 'smoke' | 'spore' | 'zzz' | 'bubble';
+/** 'light' : une lanterne dont le reflet se dessine sur l'eau (pas de particules) */
+export type EmitKind = 'smoke' | 'spore' | 'zzz' | 'bubble' | 'light';
 export interface Emitter {
   p: THREE.Vector3;
   kind: EmitKind;
@@ -18,6 +20,13 @@ export interface DecorCtx {
   r: Rng;
   pal: Palette;
   emit: Emitter[];
+  /** enseignes peintes (Mer des Lanternes) */
+  signs?: SignBuilder;
+  /** voyageurs-ombres */
+  shadows?: Builder;
+  /** sens de la voie et direction vers elle, là où l'élément est posé */
+  fwd?: THREE.Vector3;
+  inward?: THREE.Vector3;
 }
 
 type Item = (c: DecorCtx, p: THREE.Vector3, ry: number) => void;
@@ -563,6 +572,111 @@ function moonRock(c: DecorCtx, p: THREE.Vector3, ry: number): void {
   for (let i = 0; i < 3; i++) at(b, 'tetra', L(p, ry, (r() - 0.5) * 1.6, 0.9 + r() * 0.4, (r() - 0.5) * 1.6), r() * 6, 0.18, 0.18, 0.18, pal.crystal, { glow: 2 });
 }
 
+// ------------------------------------------------------------------ Mer des Lanternes
+
+const light = (c: DecorCtx, p: THREE.Vector3) => c.emit.push({ p, kind: 'light' });
+
+function lampPost(c: DecorCtx, p: THREE.Vector3, ry: number): void {
+  const { b, r } = c;
+  const h = 3.5 + r() * 1.5;
+  at(b, 'cyl6', L(p, ry, 0, h / 2, 0), ry, 0.09, h + 1, 0.09, 0x2a2440);
+  at(b, 'box', L(p, ry, 0.35, h, 0), ry, 0.7, 0.06, 0.06, 0x2a2440);
+  const lamp = L(p, ry, 0.65, h - 0.45, 0);
+  at(b, 'cyl8', lamp, 0, 0.2, 0.42, 0.2, 0xffcf70, { glow: 1.8, anim: { kind: 4, pivot: L(p, ry, 0.65, h, 0), axis: axisL(ry, 0, 0, 1), param: 0.1 } });
+  light(c, lamp);
+}
+
+/** enseigne verticale peinte, tournée vers le train qui arrive */
+function shopSign(c: DecorCtx, p: THREE.Vector3, ry: number): void {
+  const { b, r, signs } = c;
+  if (!signs || !c.fwd || !c.inward) return lampPost(c, p, ry);
+  const h = 4.4 + r() * 1.6;
+  // deux montants de bois, l'enseigne entre les deux
+  const normal = c.inward.clone().multiplyScalar(0.55).addScaledVector(c.fwd, -0.85).normalize();
+  const right = new THREE.Vector3().crossVectors(Y, normal).normalize();
+  for (const s of [-1, 1]) at(b, 'cyl6', p.clone().addScaledVector(right, s * 0.42).add(new THREE.Vector3(0, h / 2, 0)), 0, 0.06, h + 1.2, 0.06, 0x3a2a30);
+  const cc = p.clone().add(new THREE.Vector3(0, h - 1.7, 0));
+  signs.board(cc, right, Y.clone(), 0.62, 4.6, signAtlas().vertical(Math.floor(r() * SHOP_WORDS.length)));
+  const top = p.clone().add(new THREE.Vector3(0, h + 0.75, 0));
+  at(b, 'cyl8', top, 0, 0.18, 0.36, 0.18, 0xffb347, { glow: 1.8 });
+  light(c, top);
+}
+
+function stiltHouse(c: DecorCtx, p: THREE.Vector3, ry: number): void {
+  const { b, r, signs } = c;
+  const w = 3.6 + r() * 1.6, d = 3.2, h = 2.8;
+  const base = 1.5;
+  for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) at(b, 'cyl6', L(p, ry, x * w * 0.42, base / 2, z * d * 0.42), ry, 0.12, base + 0.6, 0.12, 0x3a2a30);
+  at(b, 'box', L(p, ry, 0, base + 0.05, 0), ry, w + 1.4, 0.15, d + 1.2, 0x5a4034);
+  at(b, 'box', L(p, ry, 0, base + h / 2, 0), ry, w, h, d, pick(r, [0xe8d8b8, 0xd8c0a0, 0xc8b8a8]));
+  at(b, 'prism', L(p, ry, 0, base + h, 0), ry, w * 1.35, 2.2, d * 1.3, pick(r, [0x2f3f6a, 0x8f2b35, 0x3a4a3a]));
+  for (const s of [-1, 1]) at(b, 'box', L(p, ry, s * w * 0.25, base + h * 0.55, d / 2 + 0.03), ry, 0.8, 0.9, 0.06, 0xffc870, { glow: 1.4 });
+  const lamp = L(p, ry, w / 2 + 0.3, base + h * 0.8, d / 2);
+  at(b, 'cyl8', lamp, 0, 0.18, 0.34, 0.18, 0xff9a5a, { glow: 2 });
+  light(c, lamp);
+  if (signs && r() < 0.6) {
+    const f = L(p, ry, 0, 0, 1).sub(p).normalize();
+    const right = new THREE.Vector3().crossVectors(Y, f).normalize();
+    signs.board(L(p, ry, w / 2 + 0.05, base + h * 0.55, 0.6), f, Y.clone(), 0.5, 3.6, signAtlas().vertical(Math.floor(r() * SHOP_WORDS.length)));
+    void right;
+  }
+  c.emit.push({ p: L(p, ry, -w * 0.3, base + h + 1.6, 0), kind: 'smoke' });
+}
+
+/** une petite maison seule sur son îlot, une lampe allumée à la porte */
+function lonelyHouse(c: DecorCtx, p: THREE.Vector3, ry: number): void {
+  const { b } = c;
+  at(b, 'cyl12', L(p, ry, 0, 0.5, 0), ry, 3.4, 1.4, 3.4, 0x8a8070, { jitter: 0.08 });
+  at(b, 'box', L(p, ry, 0, 2.3, 0), ry, 2.6, 2.4, 2.2, 0xe8dcc8);
+  at(b, 'prism', L(p, ry, 0, 3.5, 0), ry, 3.2, 1.8, 2.7, 0x3a3048);
+  at(b, 'box', L(p, ry, 0, 1.8, 1.12), ry, 0.7, 1.3, 0.06, 0x5a4034);
+  const lamp = L(p, ry, 0.7, 2.6, 1.3);
+  at(b, 'cyl8', lamp, 0, 0.16, 0.3, 0.16, 0xffcf70, { glow: 2.2 });
+  light(c, lamp);
+  tree(c, L(p, ry, -1.8, 1.1, -1), ry);
+}
+
+function portal(c: DecorCtx, p: THREE.Vector3, ry: number): void {
+  const { b } = c;
+  const fwd = c.fwd ?? axisL(ry, 0, 0, 1);
+  const right = new THREE.Vector3().crossVectors(Y, fwd).normalize();
+  const yaw = Math.atan2(right.x, right.z);
+  for (const s of [-1, 1]) at(b, 'cyl8', p.clone().addScaledVector(fwd, s * 2.2).add(new THREE.Vector3(0, 3, 0)), 0, 0.22, 6.4, 0.22, 0x9c2f3a);
+  at(b, 'box', p.clone().add(new THREE.Vector3(0, 6.1, 0)), yaw, 0.35, 0.35, 6.2, 0x9c2f3a);
+  at(b, 'box', p.clone().add(new THREE.Vector3(0, 5.2, 0)), yaw, 0.25, 0.22, 5.2, 0x7a1f2b);
+  for (const s of [-1, 1]) {
+    const lamp = p.clone().addScaledVector(fwd, s * 1.1).add(new THREE.Vector3(0, 4.4, 0));
+    at(b, 'sph', lamp, 0, 0.32, 0.42, 0.32, 0xff8a5a, { glow: 1.8, anim: { kind: 4, pivot: lamp.clone().add(new THREE.Vector3(0, 0.7, 0)), axis: right, param: 0.12 } });
+    light(c, lamp);
+  }
+}
+
+function floatingLanterns(c: DecorCtx, p: THREE.Vector3): void {
+  const { b, r } = c;
+  for (let i = 0; i < 4; i++) {
+    const q = p.clone().add(new THREE.Vector3((r() - 0.5) * 6, 0.85, (r() - 0.5) * 6));
+    at(b, 'cyl8', q, r() * 6, 0.22, 0.28, 0.22, pick(r, [0xffcf70, 0xff9a5a, 0xfff1c0]), { glow: 2, anim: { kind: 3, pivot: q, axis: Y, param: 0.06 } });
+    if (i === 0) light(c, q);
+  }
+}
+
+function reeds(c: DecorCtx, p: THREE.Vector3): void {
+  const { b, r } = c;
+  for (let i = 0; i < 7; i++) at(b, 'cone6', p.clone().add(new THREE.Vector3((r() - 0.5) * 2.4, 1.4, (r() - 0.5) * 2.4)), r() * 6, 0.07, 2.4 + r(), 0.07, 0x5a6a48, { sway: 1 });
+}
+
+function islet(c: DecorCtx, p: THREE.Vector3, ry: number): void {
+  const { b, r } = c;
+  at(b, 'dodeca', L(p, ry, 0, 0.6, 0), ry, 1.8 + r(), 1, 1.6 + r(), 0x6a6478, { jitter: 0.2 });
+  if (r() < 0.5) pine(c, L(p, ry, 0, 1.2, 0), ry);
+  else tree(c, L(p, ry, 0, 1.2, 0), ry);
+}
+
+function waterShadow(c: DecorCtx, p: THREE.Vector3, ry: number): void {
+  if (!c.shadows) return reeds(c, p);
+  shadowFigure(c.shadows, p.clone().add(new THREE.Vector3(0, 0.6, 0)), ry, c.r);
+}
+
 // ------------------------------------------------------------------ kits
 
 export const KITS: Record<RegionDef['key'], KitEntry[]> = {
@@ -572,6 +686,7 @@ export const KITS: Record<RegionDef['key'], KitEntry[]> = {
   cristal: [[16, crystals, 6.5], [4, (c, p, ry) => crystals(c, p, ry, true), 11], [16, (c, p, ry) => pine(c, p, ry, true), 6.5], [3, snowman, 8], [10, iceRock, 6.5], [3, lantern, 6.5]],
   engrenages: [[7, gearTower, 10], [5, chimneyStack, 10], [7, workshop, 9], [5, propeller, 7], [10, tree, 6.5], [4, flowers, 6.5], [6, rock, 6.5], [6, lantern, 6.5]],
   recif: [[16, coral, 6.5], [8, anemone, 6.5], [8, brainCoral, 6.5], [4, shell, 7], [9, kelp, 6.5], [4, jellyfish, 9], [5, flowers, 6.5]],
+  mer: [[12, shopSign, 7.5], [10, lampPost, 7.5], [5, stiltHouse, 11], [2, lonelyHouse, 14], [3, portal, 9], [8, floatingLanterns, 7.5], [8, reeds, 7.5], [5, islet, 10], [3, waterShadow, 8]],
   confins: [[9, starCrystal, 7], [14, silverTree, 6.5], [3, observatory, 10], [5, miniPlanet, 7.5], [10, moonRock, 6.5], [8, flowers, 6.5], [4, lantern, 6.5]],
 };
 
@@ -631,6 +746,12 @@ export function hangDecor(c: DecorCtx, under: Underside, p: THREE.Vector3): void
       }
       break;
     }
+    case 'basin': {
+      // l'eau goutte sous le bassin : longs filets clairs et racines
+      if (r() < 0.6) down(4 + r() * 10, 0.12 + r() * 0.12, 0xa8d8ff, 0.5);
+      else down(3 + r() * 6, 0.35 + r() * 0.4, pal.rock[2], 0.1);
+      break;
+    }
     case 'star': {
       down(3 + r() * 6, 0.4 + r() * 0.6, 0x4a4590, 0.2);
       const q = p.clone().add(new THREE.Vector3(0, -4 - r() * 6, 0));
@@ -664,6 +785,7 @@ export function buildLandmark(key: RegionDef['key'], base: THREE.Vector3, toTrac
   // face tournée vers la voie
   const ry = Math.atan2(toTrack.x, toTrack.z);
   let height = 40;
+  const d0 = 12;
   const islandRock = (radius: number, depth: number, top: number) => {
     at(b, 'cyl12', base.clone().add(new THREE.Vector3(0, -0.5, 0)), ry, radius, 1, radius, top, { jitter: 0.05 });
     at(b, 'cone8', base.clone().add(new THREE.Vector3(0, -1 - depth / 2, 0)), ry, radius * 0.98, depth, radius * 0.98, pal.rock[1], { rx: Math.PI, jitter: 0.1 });
@@ -808,6 +930,44 @@ export function buildLandmark(key: RegionDef['key'], base: THREE.Vector3, toTrac
       for (let i = 0; i < 6; i++) coral(c, base.clone().add(new THREE.Vector3((r() - 0.5) * 34, 0, (r() - 0.5) * 30)), 0);
       for (let i = 0; i < 4; i++) jellyfish(c, base.clone().add(new THREE.Vector3((r() - 0.5) * 40, 20 + r() * 25, (r() - 0.5) * 30)), 0);
       height = H + 16;
+      break;
+    }
+    case 'mer': {
+      // le Grand Hôtel des Brumes : des étages de toits recourbés, des centaines de fenêtres allumées
+      islandRock(30, 22, 0x8a8070);
+      const tiers = 6;
+      let y = 0;
+      for (let k = 0; k < tiers; k++) {
+        const w = 30 - k * 3.6, d = 20 - k * 2.4, h = 6 + (k === 0 ? 3 : 0);
+        at(b, 'box', base.clone().add(new THREE.Vector3(0, y + h / 2, 0)), ry, w, h, d, k % 2 ? 0xd8c8a8 : 0xe8d8b8);
+        // fenêtres sur la façade tournée vers la voie
+        const cols = Math.floor(w / 2.4);
+        for (let i = 0; i < cols; i++) {
+          if (r() < 0.25) continue;
+          at(b, 'box', L(base, ry, -w / 2 + 1.2 + i * 2.4, y + h * 0.5, d / 2 + 0.05), ry, 1.2, 1.8, 0.1, r() < 0.8 ? 0xffc870 : 0xff8a5a, { glow: 1.6 });
+        }
+        // toit débordant, rouge sombre, aux coins relevés
+        at(b, 'box', base.clone().add(new THREE.Vector3(0, y + h + 0.3, 0)), ry, w + 5, 0.6, d + 5, 0x6a2430);
+        for (const sx of [-1, 1]) for (const sz of [-1, 1]) at(b, 'cone4', L(base, ry, sx * (w / 2 + 2.6), y + h + 0.9, sz * (d / 2 + 2.6)), ry, 0.5, 1.4, 0.5, 0x6a2430);
+        for (let i = 0; i < 6; i++) {
+          const lp = L(base, ry, -w / 2 + (i + 0.5) * (w / 6), y + h - 0.6, d / 2 + 2.2);
+          at(b, 'sph', lp, 0, 0.45, 0.6, 0.45, 0xff6a4a, { glow: 2 });
+          if (i % 2 === 0) emit.push({ p: lp, kind: 'light' });
+        }
+        y += h + 0.6;
+      }
+      at(b, 'cone4', base.clone().add(new THREE.Vector3(0, y + 3, 0)), ry + Math.PI / 4, 6, 6, 6, 0x6a2430);
+      for (const sx of [-1, 1]) {
+        const ch = L(base, ry, sx * 9, y - 2, -4);
+        at(b, 'cyl8', ch, 0, 1, 10, 1, 0x5a4034);
+        emit.push({ p: ch.clone().add(new THREE.Vector3(0, 5.5, 0)), kind: 'smoke' });
+      }
+      // un pont rouge qui descend vers l'eau
+      for (let i = 0; i < 10; i++) {
+        const t2 = i / 9;
+        at(b, 'box', L(base, ry, 0, 1.2 + Math.sin(t2 * Math.PI) * 3, d0 + t2 * 26), ry, 4, 0.4, 2.8, 0x9c2f3a);
+      }
+      height = y + 12;
       break;
     }
     case 'confins': {

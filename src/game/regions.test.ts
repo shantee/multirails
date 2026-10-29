@@ -54,3 +54,12 @@ test('chaque frontière de région tombe sur une longue île de contemplation', 
     assert.ok(seg.s1 - b > 140, 'assez de place pour admirer');
   }
 });
+
+test('la Mer des Lanternes arrive tôt et a ses gares', () => {
+  const l = new Layout(42, 'promenade');
+  l.extend(6000);
+  assert.equal(l.regions.def(3).key, 'mer');
+  const mer = l.segments.filter((g) => g.theme === 'mer');
+  assert.ok(mer.some((g) => g.station), 'au moins une gare inondée');
+  assert.ok(mer.filter((g) => g.kind === 'gap').length > 3, 'des brèches entre les bassins');
+});

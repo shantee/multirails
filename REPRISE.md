@@ -8,7 +8,7 @@
 git clone https://github.com/shantee/multirails.git
 cd multirails/src
 npm ci
-npm test          # 19 tests de logique
+npm test          # 20 tests de logique
 npm run build     # TypeScript strict + version statique dans dist/
 npm run dev       # http://127.0.0.1:5173
 ```
@@ -27,10 +27,12 @@ Paramètres d'adresse utiles pour essayer vite : `?graine=42` (monde reproductib
   des tables en `localStorage`.
 - **Chantier 2 (branche `chantier-2-voyage`)** : sept régions avec leurs décors, habitants et monuments, montée en
   altitude, îles de contemplation aux frontières ; caméra « réalisatrice » ; nouvelle chute en parachute (torchon à
-  carreaux) ; construction des ponts plus spectaculaire. Détails dans [src/README.md](src/README.md).
+  carreaux) ; construction des ponts plus spectaculaire ; **la Mer des Lanternes** (bassins inondés, pluie, enseignes,
+  gares à cloche, voyageurs-ombres), hommage au train du *Voyage de Chihiro* sans en reprendre personnages ni décors.
+  Détails dans [src/README.md](src/README.md).
 - Vérifié dans Chrome headless (rendu logiciel SwiftShader, donc pas de mesure d'images par seconde fiable) :
-  ordinateur 1280 × 800, tablette 820 × 1180, téléphone 390 × 844 ; 0 erreur console ; 19 tests de logique verts.
-- Captures : [diag/captures/](diag/captures/) (16 à 33 pour le chantier 2).
+  ordinateur 1280 × 800, tablette 820 × 1180, téléphone 390 × 844 ; 0 erreur console ; 20 tests de logique verts.
+- Captures : [diag/captures/](diag/captures/) (16 à 40 pour le chantier 2, 34 à 40 pour la Mer des Lanternes).
 - **Pas encore fait** : essai sur une vraie tablette (images par seconde !), écoute réelle du son, essai avec un enfant.
 
 ## Points faibles et bugs connus
@@ -42,7 +44,10 @@ Paramètres d'adresse utiles pour essayer vite : `?graine=42` (monde reproductib
   les fusionner serait le plus gros gain.
 - Les caméras de côté se placent au-dessus du vide, hors de l'emprise des îles ; il n'y a pas de test de collision
   réel avec le décor. Un très grand élément (champignon géant, monument) peut passer près de l'objectif.
-- La chute a été vérifiée dans les Prés-Volants et les Hameaux Perchés, pas encore depuis un Grand Pont.
+- La chute a été vérifiée dans les Prés-Volants et les Hameaux Perchés, pas encore depuis un Grand Pont ni dans la Mer.
+- Mer des Lanternes : l'eau est opaque (pas de vrai reflet du train ni des décors, seulement du ciel et des 12 lanternes
+  les plus proches) ; les monuments peuvent se cacher derrière les grands cumulus ; la pluie ne s'arrête pas sous les
+  auvents des gares.
 - `game/main.ts` reste le chef d'orchestre (~1 000 lignes) ; caméra, chute, décors et vie sont désormais à part.
 - Shaders GLSL écrits à la main (injectés par `onBeforeCompile`), WebGL 2 seulement.
 

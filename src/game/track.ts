@@ -152,6 +152,10 @@ export interface Segment {
   region: number;
   /** île de contemplation (frontière de région) : pas de calcul, la caméra admire le paysage */
   calm: boolean;
+  /** région traversée (clé) : décide du style des ponts */
+  theme: string;
+  /** une gare au milieu de l'île : côté de la voie et nom */
+  station: { side: number; name: number } | null;
 }
 
 /** plan de la voie : alternance d'îles et de brèches, calibrée sur le temps de réponse */
@@ -161,6 +165,8 @@ export class Layout {
   private cursor = 0;
   private sinceGrand = 0;
   private sinceRescue = 0;
+  private sinceStation = 0;
+  private stationName = 0;
   private rng: Rng;
   /** demandé par le jeu : faut-il proposer des voyageurs à sauver ? */
   wantPassengers = 0;
@@ -178,7 +184,8 @@ export class Layout {
   private push(kind: SegmentKind, len: number, biome: number, extra: Partial<Segment> = {}): Segment {
     const seg: Segment = {
       id: this.nextId++, kind, s0: this.cursor, s1: this.cursor + len, built: kind === 'island', rescue: false,
-      style: 'plain', span: 0, spans: 1, passenger: false, biome, region: this.regions.rankAt(this.cursor), calm: false, ...extra,
+      style: 'plain', span: 0, spans: 1, passenger: false, biome, region: this.regions.rankAt(this.cursor), calm: false,
+      theme: this.regions.def(this.regions.rankAt(this.cursor)).key, station: null, ...extra,
     };
     this.cursor += len;
     this.segments.push(seg);
@@ -208,7 +215,16 @@ export class Layout {
         continue;
       }
       const gapLen = 26 + this.rng() * 18;
-      this.push('island', Math.max(60, cyc - gapLen), biome);
+      const isl = this.push('island', Math.max(60, cyc - gapLen), biome);
+      // des gares : souvent dans la Mer des Lanternes, parfois dans les hameaux
+      this.sinceStation++;
+      const every = isl.theme === 'mer' ? 3 : isl.theme === 'hameaux' ? 5 : 0;
+      if (every && this.sinceStation >= every && isl.s1 - isl.s0 > 55) {
+        this.sinceStation = 0;
+        const name = isl.theme === 'hameaux' ? 6 + (this.stationName % 2) : this.stationName % 6;
+        this.stationName++;
+        isl.station = { side: this.rng() < 0.5 ? -1 : 1, name };
+      }
       const passenger = this.wantPassengers > 0 && this.sinceRescue >= (this.wantPassengers > 1 ? 3 : 6);
       if (passenger) this.sinceRescue = 0;
       this.push('gap', gapLen, biome, { passenger });

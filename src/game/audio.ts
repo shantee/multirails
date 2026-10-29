@@ -8,6 +8,13 @@ const CHORDS = [
   [-7, -3, 0], // si bémol
   [-5, -1, 2], // do
 ];
+// mi bémol mineur rêveur : fa mineur, ré bémol, mi bémol sus, do
+const DREAM = [
+  [0, 3, 7],
+  [-4, 0, 3],
+  [-2, 3, 5],
+  [-5, -1, 2],
+];
 const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 
 export class Audio {
@@ -32,6 +39,10 @@ export class Audio {
   playing = false;
   /** moment de contemplation : la musique respire */
   calm = false;
+  /** pluie (0..1) et passage rêveur de la Mer des Lanternes (0..1) */
+  rain = 0;
+  dream = 0;
+  private rainNode?: { gain: GainNode };
   private lastBuild = 0;
 
   unlock(): void {
@@ -71,6 +82,19 @@ export class Audio {
     src.connect(filter).connect(gain).connect(this.sfx);
     src.start();
     this.wind = { src, gain, filter };
+    // pluie : bruit clair et feutré
+    const rs = ctx.createBufferSource();
+    rs.buffer = this.noise;
+    rs.loop = true;
+    const rf = ctx.createBiquadFilter();
+    rf.type = 'bandpass';
+    rf.frequency.value = 2600;
+    rf.Q.value = 0.4;
+    const rg = ctx.createGain();
+    rg.gain.value = 0;
+    rs.connect(rf).connect(rg).connect(this.sfx);
+    rs.start(0, 0.7);
+    this.rainNode = { gain: rg };
     this.nextStep = ctx.currentTime + 0.1;
     this.nextChug = ctx.currentTime + 0.1;
     this.timer = window.setInterval(() => this.schedule(), 25);
@@ -154,7 +178,10 @@ export class Audio {
       this.wind.gain.gain.setTargetAtTime(this.playing ? 0.04 + this.speed * 0.004 : 0.02, ctx.currentTime, 0.4);
       this.wind.filter.frequency.setTargetAtTime(300 + this.speed * 30, ctx.currentTime, 0.4);
     }
-    const bpm = 108 + this.intensity * 8 + (this.boiling ? 10 : 0);
+    if (this.rainNode) this.rainNode.gain.gain.setTargetAtTime(this.rain * 0.07, ctx.currentTime, 0.8);
+    // gouttes sur les toits et sur l'eau
+    if (this.rain > 0.2 && Math.random() < this.rain * 0.35) this.tone(2200 + Math.random() * 2600, ctx.currentTime + Math.random() * 0.1, 0.02, 0.012 * this.rain, 'sine');
+    const bpm = (108 + this.intensity * 8 + (this.boiling ? 10 : 0)) * (1 - this.dream * 0.22);
     const st = 60 / bpm / 4;
     while (this.nextStep < ahead) {
       this.musicStep(this.step, this.nextStep, st);
@@ -166,7 +193,20 @@ export class Audio {
   private musicStep(step: number, t: number, st: number): void {
     const bar = Math.floor(step / 16) % 4;
     const s16 = step % 16;
-    const chord = CHORDS[bar];
+    // dans la Mer des Lanternes, des accords mineurs et suspendus, plus lents
+    const dreamy = this.dream > 0.5;
+    const chord = dreamy ? DREAM[bar] : CHORDS[bar];
+    if (dreamy) {
+      const m = this.music;
+      if (s16 === 0) for (const n of chord) this.tone(midi(ROOT + 12 + n), t, st * 15, 0.03, 'triangle', m, 0.6);
+      if (s16 === 0 || s16 === 10) this.tone(midi(ROOT - 12 + chord[0]), t, st * 6, 0.11, 'sine', m, 0.05);
+      if (s16 % 4 === 0 && (step * 5 + bar) % 3 !== 1) {
+        const n = ROOT + 24 + chord[(s16 / 4 + bar) % 3] + (s16 === 8 ? 12 : 0);
+        this.pluck(n, t, 0.045, m, 1.6);
+      }
+      if (this.danger > 0.35 && this.playing && s16 % 4 === 0) this.tone(1050, t, 0.04, 0.05 + this.danger * 0.05, 'square', m, 0.001);
+      return;
+    }
     const m = this.music;
     const lvl = this.boiling ? 3 : this.calm ? 0 : this.intensity;
     if (s16 === 0) {
@@ -415,6 +455,18 @@ export class Audio {
     o.start(t);
     o.stop(t + 1.8);
     this.burst(t + 1.7, 0.5, 0.2, 300, 1, 'lowpass');
+  }
+
+  /** cloche de gare : partiels inharmoniques, longue résonance */
+  bell(): void {
+    if (!this.ok()) return;
+    const t = this.now;
+    for (const [k, [ratio, vol, dur]] of ([[1, 0.09, 2.6], [2.76, 0.05, 1.6], [5.4, 0.03, 0.9], [8.93, 0.015, 0.5]] as const).entries()) {
+      void k;
+      this.tone(523 * ratio, t, dur, vol, 'sine', this.sfx, 0.004);
+      this.tone(523 * ratio, t + 0.9, dur * 0.8, vol * 0.6, 'sine', this.sfx, 0.004);
+    }
+    this.burst(t, 0.03, 0.08, 3000, 2);
   }
 
   /** grincements au bord du vide, puis « glups » */

@@ -11,6 +11,7 @@ import { Debris, Fx } from './fx';
 import { makeWorldMaterial } from './geo';
 import { buildIsland, makeFallsMaterial, straightFrame } from './islands';
 import { Flock, Motes, VIGNETTES, Vignette } from './life';
+import { MAX_LIGHTS, Rain, makeWaterMaterial, shadowMaterial, signAtlas, type StationInfo } from './mer';
 import {
   CRACKS_PER_GAP, DIFFICULTIES, QuestionDeck, Run, START_WAGONS, answerOf, comboMultiplier, cruiseSpeed,
   factKey, isEntryComplete, mulberry32, progressAt, recordAnswer, referenceTime, type Fact, type Mastery,
@@ -72,9 +73,9 @@ const camera = new THREE.PerspectiveCamera(58, 1, 0.3, 5000);
 const post = new Post(renderer);
 
 const QUALITY = {
-  haute: { ratio: 2, post: true, rays: true, puffs: 170, density: 1, bg: 12, motes: 420, vignettes: 2 },
-  moyenne: { ratio: 1.35, post: true, rays: false, puffs: 110, density: 0.7, bg: 8, motes: 260, vignettes: 1 },
-  basse: { ratio: 0.9, post: false, rays: false, puffs: 60, density: 0.45, bg: 4, motes: 120, vignettes: 1 },
+  haute: { ratio: 2, post: true, rays: true, puffs: 170, density: 1, bg: 12, motes: 420, vignettes: 2, rain: 700, lights: 12 },
+  moyenne: { ratio: 1.35, post: true, rays: false, puffs: 110, density: 0.7, bg: 8, motes: 260, vignettes: 1, rain: 380, lights: 8 },
+  basse: { ratio: 0.9, post: false, rays: false, puffs: 60, density: 0.45, bg: 4, motes: 120, vignettes: 1, rain: 160, lights: 4 },
 };
 type QName = keyof typeof QUALITY;
 let quality: QName = prefs.quality === 'auto' ? (coarse ? 'moyenne' : 'haute') : prefs.quality;
@@ -92,6 +93,9 @@ const motes = new Motes();
 scene.add(motes.mesh);
 const flock = new Flock(worldMat);
 scene.add(flock.mesh);
+const waterMat = makeWaterMaterial();
+const rain = new Rain();
+scene.add(rain.mesh);
 const audio = new Audio();
 const pmrem = new THREE.PMREMGenerator(renderer);
 const envScene = new THREE.Scene();
@@ -107,6 +111,7 @@ function applyQuality(): void {
   post.rays = q.rays;
   sky.setPuffCount(q.puffs);
   motes.setCount(q.motes);
+  rain.setCount(q.rain);
   fx.density = q.density;
   resize();
 }
@@ -134,9 +139,13 @@ interface IslandEntry {
   objs: THREE.Object3D[];
   emit: Emitter[];
   life: Vignette[];
+  /** lanternes dont le reflet se dessine sur l'eau */
+  lights: THREE.Vector3[];
+  stations: Array<StationInfo & { rung: boolean }>;
 }
 const islands = new Map<number, IslandEntry>();
 const bgIslands: Array<{ objs: THREE.Object3D[]; anchor: number }> = [];
+const bgLights: THREE.Vector3[] = [];
 let bgCursor = 300;
 interface LandmarkEntry {
   k: number;
@@ -145,6 +154,7 @@ interface LandmarkEntry {
   height: number;
   mesh: THREE.Mesh;
   emit: Emitter[];
+  lights: THREE.Vector3[];
   seen: boolean;
 }
 const landmarks: LandmarkEntry[] = [];
@@ -173,6 +183,7 @@ function resetWorld(newSeed: number): void {
   for (const id of [...islands.keys()]) dropIsland(id);
   for (const b of bgIslands) b.objs.forEach(disposeObj);
   bgIslands.length = 0;
+  bgLights.length = 0;
   for (const l of landmarks) disposeObj(l.mesh);
   landmarks.length = 0;
   landmarkRank = 0;
@@ -209,6 +220,21 @@ function meshOf(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh {
   return m;
 }
 
+/** maillages d'une île : sol et décors, cascades, eau, enseignes, ombres */
+function islandMeshes(res: ReturnType<typeof buildIsland>): THREE.Object3D[] {
+  const objs: THREE.Object3D[] = [meshOf(res.solid, worldMat)];
+  if (res.falls) objs.push(meshOf(res.falls, fallsMat));
+  if (res.water) objs.push(meshOf(res.water, waterMat));
+  if (res.signs) objs.push(meshOf(res.signs, signAtlas().mat));
+  if (res.shadows) {
+    const m = meshOf(res.shadows, shadowMaterial());
+    m.renderOrder = 1;
+    objs.push(m);
+  }
+  objs.forEach((o) => scene.add(o));
+  return objs;
+}
+
 /** région d'un élément de décor posé à la distance s de la voie */
 const regionPicker = (anchor?: number) => (s: number, roll: number) => regions.def(regions.pick(anchor ?? s, roll));
 
@@ -221,11 +247,9 @@ function ensureIslands(s: number, budget: number): void {
     const r = mulberry32(seg.id * 131 + seed);
     const res = buildIsland(islandFrame, {
       s0: seg.s0, s1: seg.s1, width: 13 + r() * 9, depth: 18 + r() * 20, biome: seg.biome, region: regionPicker(), seed: seg.id * 977 + seed,
-      corridor: true, density: QUALITY[quality].density,
+      corridor: true, density: QUALITY[quality].density, station: seg.station ?? undefined,
     });
-    const objs: THREE.Object3D[] = [meshOf(res.solid, worldMat)];
-    if (res.falls) objs.push(meshOf(res.falls, fallsMat));
-    objs.forEach((o) => scene.add(o));
+    const objs = islandMeshes(res);
     // petites scènes vivantes sur les emplacements laissés libres
     const life: Vignette[] = [];
     const max = QUALITY[quality].vignettes;
@@ -239,7 +263,10 @@ function ensureIslands(s: number, budget: number): void {
       scene.add(v.group);
       life.push(v);
     }
-    islands.set(seg.id, { objs, emit: res.emit, life });
+    islands.set(seg.id, {
+      objs, life, emit: res.emit.filter((e) => e.kind !== 'light'), lights: res.emit.filter((e) => e.kind === 'light').map((e) => e.p),
+      stations: res.stations.map((st) => ({ ...st, rung: false })),
+    });
     budget--;
   }
   // îles lointaines pour la profondeur
@@ -256,9 +283,8 @@ function ensureIslands(s: number, budget: number): void {
       s0: -len / 2, s1: len / 2, width: 25 + r() * 35, depth: 40 + r() * 70, biome: Math.floor(r() * 2), region: regionPicker(bgCursor),
       seed: Math.floor(r() * 1e6), corridor: false, density: QUALITY[quality].density * 0.3,
     });
-    const objs: THREE.Object3D[] = [meshOf(res.solid, worldMat)];
-    if (res.falls) objs.push(meshOf(res.falls, fallsMat));
-    objs.forEach((o) => scene.add(o));
+    const objs = islandMeshes(res);
+    for (const e of res.emit) if (e.kind === 'light') bgLights.push(e.p);
     bgIslands.push({ objs, anchor: bgCursor });
   }
   // le monument de chaque région, posé au loin, bien dégagé de la voie
@@ -281,7 +307,7 @@ function ensureIslands(s: number, budget: number): void {
       const res = buildLandmark(def.key, center, f.pos.clone().sub(center).setY(0).normalize(), r, def.palettes[0]);
       const mesh = meshOf(res.geo, worldMat);
       scene.add(mesh);
-      landmarks.push({ k, s: at, center, height: res.height, mesh, emit: res.emit, seen: false });
+      landmarks.push({ k, s: at, center, height: res.height, mesh, emit: res.emit.filter((e) => e.kind !== 'light'), lights: res.emit.filter((e) => e.kind === 'light').map((e) => e.p), seen: false });
     }
   }
 }
@@ -295,6 +321,8 @@ function addHalte(seg: Segment): void {
     s0: -3, s1: 3, width: 3.2, depth: 5, biome: seg.biome, region: regionPicker(seg.s0), seed: seg.id, corridor: false, density: 0,
   });
   group.add(meshOf(res.solid, worldMat));
+  if (res.water) group.add(meshOf(res.water, waterMat));
+  if (res.falls) group.add(meshOf(res.falls, fallsMat));
   const passenger = new Passenger({ body: [0xffb05c, 0xc98bff, 0x6fd3ff, 0xff8fb2][seg.id % 4], shape: seg.id % 2 ? 'round' : 'tall', hat: seg.id % 3 ? 'top' : 'cap' });
   passenger.root.position.set(0, -0.4, 0);
   passenger.root.rotation.y = path.heading(seg.s0) + Math.PI / 2;
@@ -327,6 +355,8 @@ function syncWorld(s: number): void {
     haltes.delete(seg.id);
     buildStart.delete(seg.id);
   }
+  // reflets des îles lointaines : on ne garde que les plus récents
+  if (bgLights.length > 60) bgLights.splice(0, bgLights.length - 60);
   for (let i = bgIslands.length - 1; i >= 0; i--) {
     if (bgIslands[i].anchor < s - 350) {
       bgIslands[i].objs.forEach(disposeObj);
@@ -791,6 +821,7 @@ function stopPoint(): number {
 }
 
 let steamAcc = 0;
+let wakeAcc = 0;
 
 function drive(dt: number): void {
   const title = state === 'title';
@@ -950,6 +981,10 @@ function chooseShot(): ShotName {
     if (lively && director.since < 6 && danger < 0.3) return cur;
     cineCooldown = gt + 8;
   }
+  if (cur === 'travelling') {
+    if (lively && director.since < 8 && danger < 0.3) return cur;
+    cineCooldown = gt + 7;
+  }
   if (!lively || gt - runT0 < 4) return 'follow';
   // suspense : Bouillotte arrive au bord d'une voie incomplète
   if (q && q.seg.s0 - s < 42 && ((aventure && danger > 0.55) || (!aventure && v < 1.5 && q.seg.s0 - s < 8))) {
@@ -985,6 +1020,22 @@ function chooseShot(): ShotName {
     panoramaFor = here.id;
     return 'panorama';
   }
+  // dans la Mer des Lanternes : travelling au ras de l'eau, le long du train (et devant les gares)
+  if (here?.theme === 'mer' && here.kind === 'island' && gt > cineCooldown && (!q || danger < 0.05)) {
+    for (const e of islands.values()) {
+      for (const st of e.stations) {
+        if (st.s - s > 25 && st.s - s < 70) {
+          travelSide = -st.side;
+          return 'travelling';
+        }
+      }
+    }
+    if (gt > nextTravelAt) {
+      nextTravelAt = gt + 18 + Math.random() * 10;
+      travelSide = Math.random() < 0.5 ? -1 : 1;
+      return 'travelling';
+    }
+  }
   // un monument se dévoile
   const lm = landmarkAhead();
   if (lm && gt > cineCooldown && (!q || danger < 0.05)) {
@@ -995,13 +1046,15 @@ function chooseShot(): ShotName {
   return 'follow';
 }
 let landmarkShot: LandmarkEntry | null = null;
+let travelSide = 1;
+let nextTravelAt = 0;
 
 function updateCamera(dt: number): void {
   const portrait = window.innerHeight > window.innerWidth;
   const want = chooseShot();
   if (want !== director.shot) {
     if (TEST) console.log(`[T] plan ${want} à ${Math.round(s)} m, danger ${audio.danger.toFixed(2)}`);
-    const dur: Partial<Record<ShotName, number>> = { edge: 1.3, flyby: 1.1, panorama: 2.4, landmark: 2.2, grand: 1.8, fall: 0.9, follow: 1.6 };
+    const dur: Partial<Record<ShotName, number>> = { edge: 1.3, flyby: 1.1, panorama: 2.4, landmark: 2.2, grand: 1.8, fall: 0.9, follow: 1.6, travelling: 2 };
     director.go(want, dur[want] ?? 1.4, want === 'fall' || want === 'title' ? 0 : 2.5);
   }
   const f = path.frame(Math.max(0, s - 3));
@@ -1012,6 +1065,7 @@ function updateCamera(dt: number): void {
     grand: grandCam() ?? undefined,
     landmark: landmarkShot ? { center: landmarkShot.center, height: landmarkShot.height } : undefined,
     forced: fall ? fall.camera(dt) : undefined,
+    side: travelSide,
   });
   // un léger lissage par-dessus les fondus de la réalisatrice
   const follow = director.shot === 'follow' || director.shot === 'title';
@@ -1031,7 +1085,7 @@ function updateCamera(dt: number): void {
   void f;
   camera.fov = fov;
   // bandes de cinéma pendant les grands plans sans calcul
-  document.body.classList.toggle('cine', director.shot === 'panorama' || director.shot === 'landmark' || director.shot === 'fall');
+  document.body.classList.toggle('cine', director.shot === 'panorama' || director.shot === 'landmark' || director.shot === 'fall' || director.shot === 'travelling');
   // décale le cadrage pour que le pavé ne cache pas le train (sauf pendant la chute)
   const w = window.innerWidth, h = window.innerHeight;
   const inset = director.shot === 'fall' ? { right: 0, bottom: 0 } : ui.padInset();
@@ -1061,6 +1115,7 @@ const lifeFx = {
 
 function emitAll(list: Emitter[], dt: number): void {
   for (const e of list) {
+    if (e.kind === 'light') continue;
     const d2 = e.p.distanceToSquared(camera.position);
     if (d2 > 160 * 160) continue;
     const rate = e.kind === 'smoke' ? 2.2 : e.kind === 'spore' ? 3 : 1;
@@ -1128,6 +1183,30 @@ function updateEffects(dt: number): void {
     emitAll(e.emit, dt);
   }
   for (const l of landmarks) emitAll(l.emit, dt * 3);
+  // les gares : la cloche sonne au passage, le nom s'affiche
+  if (state === 'playing') {
+    for (const e of islands.values()) {
+      for (const st of e.stations) {
+        if (!st.rung && s > st.s - 14 && s < st.s + 20) {
+          st.rung = true;
+          audio.bell();
+          ui.showBanner(`🔔 ${st.name}`, 'station', 2600);
+          if (TEST) console.log(`[T] gare ${st.name} à ${Math.round(s)} m`);
+        }
+      }
+    }
+  }
+  // sillage : la locomotive fend l'eau des bassins
+  const seg = layout.at(s);
+  if (seg?.theme === 'mer' && seg.kind === 'island' && v > 1.5 && (state === 'playing' || state === 'title')) {
+    wakeAcc += dt * (4 + v * 0.8) * fx.density;
+    while (wakeAcc > 1) {
+      wakeAcc--;
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const p = train.loco.root.localToWorld(tmpV.set(side * 1.05, 0.05, -2.6 + Math.random() * 5));
+      fx.splash(p, path.frame(s).right.clone().multiplyScalar(side), v);
+    }
+  }
   // volées qui traversent le ciel de temps en temps
   if ((state === 'playing' || state === 'title') && !flock.active && gt > nextFlockAt) {
     const f = path.frame(s);
@@ -1140,6 +1219,51 @@ function updateEffects(dt: number): void {
   if (whale.active && whale.spout && Math.random() < 0.5) fx.spout(whale.blowhole(tmpV).clone());
   fx.update(dt);
   debris.update(dt);
+}
+
+// ------------------------------------------------------------------ eau
+
+const lightList: Array<{ p: THREE.Vector3; d: number }> = [];
+const lampPos = new THREE.Vector3();
+const deepTeal = new THREE.Color(0x1e5a70);
+
+/** l'eau des bassins reflète le ciel et les lanternes les plus proches */
+function updateWater(rainAmount: number, dream: number): void {
+  const u = waterMat.uniforms;
+  u.uTime.value = gt;
+  u.uCam.value.copy(camera.position);
+  u.uTop.value.copy(sky.amb.top);
+  u.uHorizon.value.copy(sky.amb.horizon);
+  u.uSun.value.copy(sky.amb.sun);
+  u.uSunDir.value.copy(sky.sunDir);
+  u.uFog.value.copy(sky.fog.color);
+  u.uFogNear.value = sky.fog.near;
+  u.uFogFar.value = sky.fog.far;
+  u.uDeep.value.copy(sky.amb.top).lerp(deepTeal, 0.6).multiplyScalar(0.75);
+  u.uRain.value = rainAmount;
+  if (dream < 0.01 && bgLights.length === 0) {
+    u.uNL.value = 0;
+    return;
+  }
+  lightList.length = 0;
+  const cam = camera.position;
+  const consider = (p: THREE.Vector3) => {
+    const d = p.distanceToSquared(cam);
+    if (d < 230 * 230) lightList.push({ p, d });
+  };
+  for (const e of islands.values()) {
+    for (const p of e.lights) consider(p);
+    for (const vg of e.life) if (vg.light) consider(vg.light.getWorldPosition(new THREE.Vector3()));
+  }
+  for (const p of bgLights) consider(p);
+  for (const l of landmarks) for (const p of l.lights) consider(p);
+  // la lanterne avant de Bouillotte
+  if (!fall) consider(train.loco.root.localToWorld(lampPos.set(0, 1.85, -3)));
+  lightList.sort((a, b) => a.d - b.d);
+  const n = Math.min(QUALITY[quality].lights, lightList.length, MAX_LIGHTS);
+  const arr = u.uLights.value as THREE.Vector4[];
+  for (let i = 0; i < n; i++) arr[i].set(lightList[i].p.x, 2.5, lightList[i].p.z, 1);
+  u.uNL.value = n;
 }
 
 // ------------------------------------------------------------------ boucle
@@ -1192,6 +1316,12 @@ function frame(): void {
   sky.update(ambience, regions.altitude(s), camera.position, path.heading(s), gt);
   const mix = regions.mix(s);
   motes.update(gt, camera.position, mix.a, mix.b, mix.t);
+  const rainAmount = mix.a.rain + (mix.b.rain - mix.a.rain) * mix.t;
+  rain.update(gt, camera.position, state === 'title' ? rainAmount * 0.5 : rainAmount);
+  const dream = (mix.a.key === 'mer' ? 1 - mix.t : 0) + (mix.b.key === 'mer' ? mix.t : 0);
+  audio.rain = rainAmount * (state === 'playing' || state === 'title' ? 1 : 0.5);
+  audio.dream = dream;
+  updateWater(rainAmount, dream);
   worldU.uTime.value = gt;
   worldU.uNight.value = sky.amb.night;
   rails.shared.uTime.value = gt;
@@ -1329,5 +1459,8 @@ if (TEST) {
       ui.setWagons(0, false);
     },
     camera: (c: 'vivante' | 'calme') => { prefs.camera = c; },
+    water: waterMat,
+    project: (x: number, y: number, z: number) => new THREE.Vector3(x, y, z).project(camera).toArray().map((n) => +n.toFixed(2)),
+    lms: () => landmarks.map((l) => ({ k: l.k, key: regions.def(l.k).key, s: Math.round(l.s), c: l.center.toArray().map(Math.round), r: Math.round(l.mesh.geometry.boundingSphere?.radius ?? 0), tris: l.mesh.geometry.getAttribute('position').count / 3 })),
   };
 }

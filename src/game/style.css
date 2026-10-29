@@ -312,3 +312,5 @@ body.cine .cinebar { height: 6.5vh; }
 }
 .skip-hint.show { opacity: .85; animation: pulse 1.4s infinite alternate; }
 @media (prefers-reduced-motion: reduce) { .cinebar { transition: none; } .skip-hint.show { animation: none; } }
+/* nom de gare : discret, comme une enseigne qui passe */
+.banner.station { font-size: clamp(20px, 3.4vw, 34px); top: 30%; letter-spacing: .04em; color: #fff4dc; text-shadow: 0 3px 0 #2a2f5a, 0 2px 12px rgba(20, 16, 50, .8), 0 0 22px rgba(255, 200, 112, .6); }

@@ -13,7 +13,7 @@ npm run dev        # http://127.0.0.1:5173
 ```
 
 ```sh
-npm test           # 14 tests de logique (calculs, barème, wagons, tracé)
+npm test           # 20 tests de logique (calculs, barème, wagons, tracé, régions)
 npm run build      # TypeScript strict + version statique dans dist/
 npm run preview    # sert dist/ en local
 ```
@@ -51,6 +51,12 @@ Paramètres d'adresse pour les essais : `?graine=42` (monde reproductible), `?de
   (champignons géants lumineux), les Hameaux Perchés 🏡 (maisons à colombages, linge, montgolfières), puis dans un ordre
   qui change à chaque partie les Cimes de Givre 💎, la Cité des Engrenages ⚙️ et le Récif des Nuées 🐢, et enfin les
   Confins Étoilés ✨. Ensuite le voyage continue en boucle, dans un nouvel ordre.
+- **La Mer des Lanternes** 🏮 (4ᵉ région, puis de temps en temps) : un hommage aux trains rêveurs du cinéma d'animation.
+  La voie file au ras de l'eau dans de grands bassins flottants qui débordent en cascades ; crépuscule, brume, pluie ;
+  enseignes peintes verticales (« THÉ », « BAINS », « POISSONS »…), réverbères, maisons sur pilotis, portiques à
+  lanternes, pêcheurs en barque, voyageurs-ombres ; **gares inondées** (Gare des Lanternes, Quai des Ombres…) dont la
+  cloche sonne au passage ; ponts de bois laqué rouge ; musique plus lente, en mineur ; travelling au ras de l'eau.
+  Des gares (non inondées) jalonnent aussi les Hameaux Perchés.
 - Les régions se mélangent aux frontières : les premiers champignons poussent dans les prés bien avant la forêt.
   La voie **monte** à chaque région (la mer de nuages s'éloigne dessous). Chaque frontière est une longue île
   **de contemplation** : pas de calcul, le train flâne, la musique respire, la caméra fait un grand panorama.
@@ -94,6 +100,7 @@ TypeScript strict, Vite, **Three.js** (WebGL 2), Web Audio. Une seule bibliothè
 | `game/decor.ts` | les « kits » de décor de chaque région, le dessous des îles, les monuments ; animations sur la carte graphique |
 | `game/life.ts` | petites scènes vivantes, habitants qui saluent, volées (oiseaux, poissons volants, lanternes…), poussières |
 | `game/director.ts` | la réalisatrice : plans de caméra et fondus entre eux |
+| `game/mer.ts` | Mer des Lanternes : shader d'eau (reflets du ciel et des lanternes, ronds de pluie), pluie, enseignes (atlas dessiné par le code), gares, ombres |
 | `game/fall.ts` | la chute en parachute (trajectoire au-dessus du vide, torchon, canard, amerrissage) |
 | `game/main.ts` | boucle, conduite du train, choix des plans, mise en scène |
 

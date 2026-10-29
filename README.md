@@ -74,7 +74,11 @@ Rien n'est installé hors du dossier du projet. Arrêter Vite (Ctrl+C). Clés `l
 - Chute refaite (`fall.ts`) : bascule au ralenti, torchon à carreaux, soupape, amis aux parapluies, canard, amerrissage ;
   les îles ne dépassent plus sous le bout des rails (c'était la cause du train qui tombait « dans » l'île).
 - Ponts : pièces qui montent en tourbillon, souffle et « clac » sonores. Fin de voyage : régions traversées.
-- `window.__multirail` n'est plus exposé en production (sauf `?test`). 19 tests verts, build vérifié, captures 16 à 33.
+- `window.__multirail` n'est plus exposé en production (sauf `?test`). Build vérifié, captures 16 à 33.
+- **La Mer des Lanternes** (demande de Philippe : l'ambiance du train inondé du *Voyage de Chihiro*) : bassins flottants
+  où la voie file au ras de l'eau, shader d'eau (reflets du ciel et des lanternes, ronds de pluie), pluie, brume,
+  enseignes peintes, gares inondées avec cloche et voyageurs-ombres, pêcheurs, Grand Hôtel des Brumes, travelling au ras
+  de l'eau, musique en mineur ; gares à cloche aussi dans les Hameaux Perchés. 20 tests verts, captures 34 à 40.
 
 ### 2026-10-29 — Claude
 

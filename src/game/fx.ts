@@ -253,6 +253,14 @@ export class Fx {
     });
   }
 
+  /** gerbe d'eau du sillage, projetée sur le côté */
+  splash(at: THREE.Vector3, out: THREE.Vector3, speed: number): void {
+    this.soft.spawn({
+      pos: at, vel: this.v.copy(out).multiplyScalar(1.5 + Math.random() * 2).add(new THREE.Vector3(0, 1.2 + Math.random() * 1.5 + speed * 0.04, 0)),
+      color: 0xdcecff, size0: 0.25, size1: 1.1, life: 0.6 + Math.random() * 0.3, drag: 1.5, grav: 6, alpha: 0.5,
+    });
+  }
+
   /** gros anneau de nuage quand on atterrit dans la mer de nuages */
   cloudRing(at: THREE.Vector3, n: number): void {
     for (let i = 0; i < n; i++) {
